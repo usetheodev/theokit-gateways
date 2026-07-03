@@ -34,10 +34,10 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@theokit/sdk": "^1.9.0"
+    "@theokit/sdk": "^2.18.0"
   },
   "devDependencies": {
-    "@theokit/sdk": "^1.9.0",
+    "@theokit/sdk": "^2.18.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.8",
