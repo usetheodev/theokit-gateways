@@ -1,22 +1,21 @@
 /**
  * Typed errors for `@theokit/gateway-line`.
+ *
+ * `ConfigurationError` extends the shared core `GatewayConfigurationError`
+ * base (roadmap M2) — only the package prefix is package-specific. Name,
+ * message shape, `code`/`detail` fields, and `instanceof` are byte-identical
+ * to the previous hand-rolled class (pinned by `tests/errors.test.ts`).
  */
 
-/** @knipignore — public input shape for `ConfigurationError` constructor (caller-extensible). */
-export interface ConfigurationErrorOptions {
-  readonly code: string;
-  readonly message?: string;
-  readonly detail?: string;
-}
+import { GatewayConfigurationError, type GatewayConfigurationErrorOptions } from "@theokit/gateway";
 
-export class ConfigurationError extends Error {
+/** @knipignore — public input shape for `ConfigurationError` constructor (caller-extensible). */
+export type ConfigurationErrorOptions = GatewayConfigurationErrorOptions;
+
+export class ConfigurationError extends GatewayConfigurationError {
   override readonly name = "ConfigurationError";
-  readonly code: string;
-  readonly detail: string | undefined;
   constructor(opts: ConfigurationErrorOptions) {
-    super(opts.message ?? `gateway-line: ${opts.code}`);
-    this.code = opts.code;
-    this.detail = opts.detail;
+    super("gateway-line", opts);
   }
 }
 

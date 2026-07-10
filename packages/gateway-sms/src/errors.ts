@@ -8,27 +8,22 @@
  *   plivo / @vonage/server-sdk) was selected but the npm package is
  *   not installed. Carries actionable install hint.
  *
- * Both extend the SDK's base error hierarchy through standard Error
- * (the SDK consumes structured errors via metadata.code).
+ * `ConfigurationError` extends the shared core `GatewayConfigurationError`
+ * base (roadmap M2); the SDK still consumes structured errors via
+ * `metadata.code`. Behavior byte-identical (pinned by `tests/errors.test.ts`).
  *
  * @internal — re-exported by `src/index.ts`.
  */
 
-/** @knipignore — public input shape for `ConfigurationError` constructor (caller-extensible). */
-export interface ConfigurationErrorOptions {
-  readonly message?: string;
-  readonly code: string;
-  readonly detail?: string;
-}
+import { GatewayConfigurationError, type GatewayConfigurationErrorOptions } from "@theokit/gateway";
 
-export class ConfigurationError extends Error {
+/** @knipignore — public input shape for `ConfigurationError` constructor (caller-extensible). */
+export type ConfigurationErrorOptions = GatewayConfigurationErrorOptions;
+
+export class ConfigurationError extends GatewayConfigurationError {
   override readonly name = "ConfigurationError";
-  readonly code: string;
-  readonly detail: string | undefined;
   constructor(opts: ConfigurationErrorOptions) {
-    super(opts.message ?? `gateway-sms: ${opts.code}`);
-    this.code = opts.code;
-    this.detail = opts.detail;
+    super("gateway-sms", opts);
   }
 }
 
