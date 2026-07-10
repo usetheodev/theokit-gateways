@@ -4,8 +4,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { HookExecutor } from "../../src/hooks/executor.js";
 import type { GatewayHook } from "../../src/hooks/types.js";
-import { HookExecutor } from "../../src/hooks/types.js";
 import type { MessageEvent } from "../../src/types/message-event.js";
 
 const ev: MessageEvent = {
