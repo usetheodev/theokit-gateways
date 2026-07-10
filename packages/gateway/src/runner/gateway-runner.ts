@@ -25,7 +25,8 @@
 import { Security } from "@theokit/sdk";
 
 import type { BasePlatformAdapter, SendResult } from "../adapter/base.js";
-import { type GatewayHook, HookExecutor } from "../hooks/types.js";
+import { HookExecutor } from "../hooks/executor.js";
+import type { GatewayHook } from "../hooks/types.js";
 import type { MessageEvent as GatewayMessageEvent, PlatformName } from "../types/message-event.js";
 
 /** Per-event context passed to the user handler. */

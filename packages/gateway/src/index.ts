@@ -12,15 +12,20 @@ export {
   DeliveryRouter,
   type DeliveryTarget,
 } from "./delivery/router.js";
-// Hooks
+// Errors
 export {
-  type GatewayHook,
-  type HookDecision,
-  HookExecutor,
-  type HookName,
-  type OnErrorContext,
-  type PostOutboundContext,
-  type PreInboundContext,
+  GatewayConfigurationError,
+  type GatewayConfigurationErrorOptions,
+} from "./errors/config-error.js";
+// Hooks
+export { HookExecutor } from "./hooks/executor.js";
+export type {
+  GatewayHook,
+  HookDecision,
+  HookName,
+  OnErrorContext,
+  PostOutboundContext,
+  PreInboundContext,
 } from "./hooks/types.js";
 // Runner
 export {
@@ -35,6 +40,8 @@ export {
   defaultStrategy,
   SessionRouter,
 } from "./session/router.js";
+// Text
+export { type ChunkTextOptions, chunkText } from "./text/chunk.js";
 // Types
 export type {
   BaseMessageEvent,

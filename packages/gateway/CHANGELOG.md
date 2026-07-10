@@ -8,8 +8,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `chunkText(text, options)` — transport-agnostic, boundary-preferring text chunker exported from the public barrel. Single-sources the message-splitting knowledge duplicated across the platform adapters; faithfully reproduces the Slack-family (fixed window, space boundary, surrogate guard) and Telegram-family (soft window, newline-only) algorithms via options. Grapheme (`Intl.Segmenter`) splitting stays adapter-local (roadmap M0, arch-hardening).
+- `GatewayConfigurationError` base + `GatewayConfigurationErrorOptions` — shared base for per-adapter `ConfigurationError` classes, exported from the public barrel (roadmap M0, arch-hardening).
+
 ### Changed
 
+- Moved the `HookExecutor` run engine from `hooks/types.ts` into `hooks/executor.ts` so the filename predicts its contents; `hooks/types.ts` now holds the hook contract (interfaces + `HookName`) only. Public API is byte-identical — `HookExecutor` and all hook interfaces are re-exported unchanged from the barrel (roadmap M0, arch-hardening).
 - **Documentation only:** added `src/README.md` documenting the 6 single-file sub-folder cluster (`adapter/`, `delivery/`, `hooks/`, `runner/`, `session/`, `types/`) as intentional bounded future-extensibility scaffold (T10.2 of plan `arch-review-fixes-2026-06-06`; FO#4 of 2026-06-06 architecture audit). Rationale + ADR cross-references (D170-D177) + 12-month re-evaluation trigger documented. No code change.
 
 ## 2.0.0

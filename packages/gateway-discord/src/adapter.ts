@@ -15,6 +15,8 @@ import type { DiscordMessageEvent, MessageEvent as GatewayMessageEvent } from "@
 import { BasePlatformAdapter, type OutboundMessage, type SendResult } from "@theokit/gateway";
 import { Client, DiscordAPIError, Events, GatewayIntentBits, type Message } from "discord.js";
 
+import { splitForDiscord } from "./split.js";
+
 export interface DiscordAdapterOptions {
   readonly token: string;
   /**
@@ -32,9 +34,6 @@ export const DEFAULT_DISCORD_INTENTS: ReadonlyArray<GatewayIntentBits> = [
   GatewayIntentBits.DirectMessages,
   GatewayIntentBits.DirectMessageReactions,
 ];
-
-const DISCORD_MAX_MESSAGE = 2000;
-const SAFE_DISCORD_CHUNK = 1900;
 
 export class DiscordAdapter extends BasePlatformAdapter {
   readonly platform = "discord" as const;
@@ -189,26 +188,6 @@ function normalizeEvent(msg: Message): DiscordMessageEvent {
       raw: msg,
     },
   };
-}
-
-function splitForDiscord(text: string): string[] {
-  if (text.length <= DISCORD_MAX_MESSAGE) return [text];
-  const parts: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= SAFE_DISCORD_CHUNK) {
-      parts.push(remaining);
-      break;
-    }
-    let boundary = remaining.lastIndexOf("\n\n", SAFE_DISCORD_CHUNK);
-    if (boundary < SAFE_DISCORD_CHUNK / 2) {
-      boundary = remaining.lastIndexOf("\n", SAFE_DISCORD_CHUNK);
-    }
-    if (boundary < SAFE_DISCORD_CHUNK / 2) boundary = SAFE_DISCORD_CHUNK;
-    parts.push(remaining.slice(0, boundary));
-    remaining = remaining.slice(boundary).replace(/^\n+/, "");
-  }
-  return parts;
 }
 
 function mapSendError(err: unknown): SendResult {
