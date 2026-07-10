@@ -8,4 +8,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Migrated the 6 duplicated message-splitting implementations (`gateway-slack`, `gateway-whatsapp`, `gateway-teams`, `gateway-discord`, `gateway-line`, `gateway-sms`) onto the shared core primitives `chunkText` / `chunkByGrapheme`. Each `splitForX` is now a thin, byte-identical wrapper (pinned by golden `split.test.ts` before/after); the surrogate/grapheme guard is single-sourced. `gateway-telegram`'s markdown-aware split stays deliberately separate (roadmap M1, arch-hardening). No public API or behavior change.
 - Extracted `@theokit/gateway` + 10 platform adapters (telegram, discord, slack, whatsapp, teams, email, sms, line, matrix, mattermost) out of the `theokit-sdk` monorepo into this standalone repository (plan `monorepo-cohesion-split`, 2026-06-18), preserving full git history via `git filter-repo`. Every adapter now consumes `@theokit/sdk` as a published npm dependency (`^1.9.0`) instead of a workspace link; `@theokit/gateway` remains an in-repo workspace dependency. npm package names and versions are unchanged.

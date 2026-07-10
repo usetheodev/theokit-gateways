@@ -7,39 +7,22 @@
  * prefixed with `(i/N) ` to allow manual reordering when carriers
  * deliver out of sequence (EC-7).
  *
- * Uses `Intl.Segmenter` (Node 22+) so emoji (🇧🇷) and combining
- * sequences are never severed.
+ * Thin wrapper over core `chunkByGrapheme` (roadmap M1) — single-sources the
+ * `Intl.Segmenter` grapheme walk so emoji (🇧🇷) and combining sequences are
+ * never severed. The `(i/N) ` prefix (and its reserved width) stays here since
+ * it is SMS-specific. Output is byte-identical to the previous implementation
+ * (pinned by `tests/split.test.ts`).
  *
  * @internal
  */
 
+import { chunkByGrapheme } from "@theokit/gateway";
+
 const PART_PREFIX_RESERVED = 8; // "(99/99) " worst case
 
 export function splitForSMS(text: string, limit = 1600): string[] {
-  if (text.length === 0) return [""];
-  if (text.length <= limit) return [text];
-
-  // Walk graphemes; build parts up to (limit - reserved).
-  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-  const segments = Array.from(segmenter.segment(text), (s) => s.segment);
-  const parts: string[] = [];
-  const cap = limit - PART_PREFIX_RESERVED;
-  let buf = "";
-  for (const seg of segments) {
-    // If adding `seg` would exceed cap, flush.
-    if (buf.length + seg.length > cap) {
-      if (buf.length > 0) parts.push(buf);
-      buf = "";
-    }
-    buf += seg;
-  }
-  if (buf.length > 0) parts.push(buf);
-
-  if (parts.length === 1) {
-    // Short enough to skip prefix.
-    return parts;
-  }
-
+  const parts = chunkByGrapheme(text, { limit, partLimit: limit - PART_PREFIX_RESERVED });
+  if (parts.length <= 1) return parts; // short-circuit / single part: skip prefix
   const total = parts.length;
   return parts.map((p, i) => `(${i + 1}/${total}) ${p}`);
 }

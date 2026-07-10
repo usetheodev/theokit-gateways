@@ -10,7 +10,8 @@
 
 ### Added
 
-- `chunkText(text, options)` — transport-agnostic, boundary-preferring text chunker exported from the public barrel. Single-sources the message-splitting knowledge duplicated across the platform adapters; faithfully reproduces the Slack-family (fixed window, space boundary, surrogate guard) and Telegram-family (soft window, newline-only) algorithms via options. Grapheme (`Intl.Segmenter`) splitting stays adapter-local (roadmap M0, arch-hardening).
+- `chunkText(text, options)` — transport-agnostic, boundary-preferring text chunker exported from the public barrel. Single-sources the message-splitting knowledge duplicated across the platform adapters; faithfully reproduces the Slack-family (fixed window, space boundary, surrogate guard) and Telegram-family (soft window, newline-only) algorithms via options (roadmap M0, arch-hardening).
+- `chunkByGrapheme(text, options)` — grapheme-cluster-safe (`Intl.Segmenter`) chunker exported from the public barrel. Single-sources the grapheme walk shared by the LINE and SMS adapters; never severs an emoji, regional-indicator pair, or combining sequence (roadmap M1, arch-hardening).
 - `GatewayConfigurationError` base + `GatewayConfigurationErrorOptions` — shared base for per-adapter `ConfigurationError` classes, exported from the public barrel (roadmap M0, arch-hardening).
 
 ### Changed
