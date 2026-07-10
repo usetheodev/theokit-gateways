@@ -4,3 +4,7 @@ coverage/
 .turbo/
 *.tsbuildinfo
 .DS_Store
+
+# Claude Code cycle tooling + audit artifacts (not shipped source)
+.claude/
+architect-output/
