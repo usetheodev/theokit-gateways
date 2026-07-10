@@ -73,6 +73,13 @@ function searchBoundary(remaining: string, window: number, boundaries: readonly 
   return cut;
 }
 
+/** Fail fast on a non-positive / non-integer size argument. */
+function assertPositiveInt(label: string, value: number): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new RangeError(`${label} must be a positive integer, received ${value}`);
+  }
+}
+
 /** Step back one code unit if `cut` would sever a UTF-16 surrogate pair. */
 function guardSurrogate(text: string, cut: number): number {
   if (cut >= text.length) return cut;
@@ -109,6 +116,15 @@ export function chunkText(text: string, options: ChunkTextOptions): string[] {
     stripLeading = /^\n+/,
     trimParts = false,
   } = options;
+
+  // Fail fast at the boundary: a non-positive `limit` would make `findCut`
+  // return 0 forever and hang the loop; `safeLimit > limit` would break the
+  // "hard cap" contract by emitting an oversized tail chunk.
+  assertPositiveInt("chunkText: limit", limit);
+  assertPositiveInt("chunkText: safeLimit", safeLimit);
+  if (safeLimit > limit) {
+    throw new RangeError(`chunkText: safeLimit (${safeLimit}) must be <= limit (${limit})`);
+  }
 
   const finalize = (parts: string[]): string[] =>
     trimParts ? parts.map((p) => p.trim()).filter((p) => p.length > 0) : parts;
@@ -150,6 +166,8 @@ export interface ChunkByGraphemeOptions {
  */
 export function chunkByGrapheme(text: string, options: ChunkByGraphemeOptions): string[] {
   const { limit, partLimit = limit } = options;
+  assertPositiveInt("chunkByGrapheme: limit", limit);
+  assertPositiveInt("chunkByGrapheme: partLimit", partLimit);
   if (text.length === 0) return [""];
   if (text.length <= limit) return [text];
 

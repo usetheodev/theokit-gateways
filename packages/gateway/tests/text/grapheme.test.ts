@@ -67,16 +67,31 @@ const smsViaCore = (t: string): string[] => {
 function makeCorpus(): string[] {
   const corpus: string[] = ["", "short", "🇧🇷🇧🇷 regional indicators", "a̐éö̲ combining"];
   const word = "the quick brown fox 🦊 ";
-  for (const size of [1592, 1600, 1601, 3200, 4999, 5000, 5001, 12000]) {
+  for (const size of [1592, 1593, 1599, 1600, 1601, 3200, 4999, 5000, 5001, 12000]) {
     let s = "";
     while (s.length < size) s += word;
     corpus.push(s.slice(0, size));
     corpus.push("x".repeat(size));
   }
+  // Grapheme straddling the SMS cap (1592): 😀 = 2 UTF-16 units at the boundary.
+  corpus.push(`${"x".repeat(1591)}😀${"y".repeat(50)}`);
   return corpus;
 }
 
 const CORPUS = makeCorpus();
+
+describe("chunkByGrapheme — input validation (fail fast)", () => {
+  it("throws on non-positive limit", () => {
+    expect(() => chunkByGrapheme("abc", { limit: 0 })).toThrow(RangeError);
+    expect(() => chunkByGrapheme("abc", { limit: -1 })).toThrow(/positive integer/);
+  });
+  it("throws on non-positive partLimit", () => {
+    expect(() => chunkByGrapheme("abc", { limit: 100, partLimit: 0 })).toThrow(/partLimit/);
+  });
+  it("accepts a valid partLimit below limit", () => {
+    expect(() => chunkByGrapheme("abc", { limit: 100, partLimit: 92 })).not.toThrow();
+  });
+});
 
 describe("chunkByGrapheme — fast paths", () => {
   it("empty string → single empty chunk", () => {
