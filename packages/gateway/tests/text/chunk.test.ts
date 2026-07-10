@@ -141,6 +141,10 @@ function makeCorpus(): string[] {
   // Emoji at the window edge to exercise the surrogate guard (😀 = 2 UTF-16 units).
   corpus.push(`${"a".repeat(3999)}😀${"b".repeat(200)}`);
   corpus.push(`${"a".repeat(4095)}😀${"b".repeat(200)}`);
+  // Emoji at the Discord (1900) window edge — pins that Discord has NO surrogate guard.
+  corpus.push(`${"a".repeat(1899)}😀${"b".repeat(200)}`);
+  // Non-\n/non-space whitespace in the strip position — distinguishes /^\s+/ from /^\n+/.
+  corpus.push(`${"x".repeat(3990)} \t\r\f${"y".repeat(500)}`);
   return corpus;
 }
 
@@ -155,6 +159,24 @@ describe("chunkText — single-chunk fast path", () => {
   });
   it("drops an all-whitespace single chunk when trimParts is set", () => {
     expect(chunkText("   ", { limit: 100, trimParts: true })).toEqual([]);
+  });
+});
+
+describe("chunkText — input validation (fail fast)", () => {
+  it("throws on non-positive limit instead of hanging", () => {
+    expect(() => chunkText("abc", { limit: 0 })).toThrow(RangeError);
+    expect(() => chunkText("abc", { limit: -5 })).toThrow(/positive integer/);
+    expect(() => chunkText("abc", { limit: 1.5 })).toThrow(RangeError);
+  });
+  it("throws when safeLimit exceeds limit (would break the hard cap)", () => {
+    expect(() => chunkText("abc", { limit: 100, safeLimit: 200 })).toThrow(/safeLimit/);
+  });
+  it("throws on non-positive safeLimit", () => {
+    expect(() => chunkText("abc", { limit: 100, safeLimit: 0 })).toThrow(RangeError);
+  });
+  it("accepts safeLimit === limit and safeLimit < limit", () => {
+    expect(() => chunkText("abc", { limit: 100, safeLimit: 100 })).not.toThrow();
+    expect(() => chunkText("abc", { limit: 100, safeLimit: 50 })).not.toThrow();
   });
 });
 
