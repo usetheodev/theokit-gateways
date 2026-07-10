@@ -62,17 +62,17 @@ Preserve the exemplary structure of the `theokit-gateways` monorepo (zero circul
 
 > Each milestone has a checkbox in its header. Flip `[ ]` → `[x]` as you complete it. Status lives in this document; no external tracker required. Milestone → migration-step mapping (report §10) noted per milestone.
 
-### M0 — [ ] Walking skeleton: additive core primitives + safety net
+### M0 — [x] Walking skeleton: additive core primitives + safety net
 
 **Objective:** Stand up the new core scaffolding (`chunkText`, `GatewayConfigurationError`, `hooks/executor.ts`) and backfill missing pin tests — all behavior-preserving, zero adapter rewiring yet.
 
 **Definition of done (all must hold):**
 
-- [ ] `packages/gateway/src/hooks/executor.ts` holds `HookExecutor`; `hooks/types.ts` holds interfaces only; barrel re-points; `pnpm --filter @theokit/gateway typecheck && test` green (step 1).
-- [ ] `packages/gateway/src/text/chunk.ts` exports `chunkText({limit, granularity:"utf16"|"grapheme", transformPart?})` with golden tests in `packages/gateway/tests/chunk.test.ts`; exported from barrel (step 2).
-- [ ] `packages/gateway/src/errors/config-error.ts` exports `GatewayConfigurationError` base; exported from barrel (step 3).
-- [ ] `gateway-discord` inline `splitForDiscord` (adapter.ts:194) extracted to `split.ts` with a new pin `split.test.ts` (step 4).
-- [ ] `errors.test.ts` added for `line`/`matrix`/`mattermost`/`sms` capturing current name/prefix/`instanceof` (step 5).
+- [x] `packages/gateway/src/hooks/executor.ts` holds `HookExecutor`; `hooks/types.ts` holds interfaces only; barrel re-points; `pnpm --filter @theokit/gateway typecheck && test` green (step 1).
+- [x] `packages/gateway/src/text/chunk.ts` exports `chunkText({limit, granularity:"utf16"|"grapheme", transformPart?})` with golden tests in `packages/gateway/tests/chunk.test.ts`; exported from barrel (step 2).
+- [x] `packages/gateway/src/errors/config-error.ts` exports `GatewayConfigurationError` base; exported from barrel (step 3).
+- [x] `gateway-discord` inline `splitForDiscord` (adapter.ts:194) extracted to `split.ts` with a new pin `split.test.ts` (step 4).
+- [x] `errors.test.ts` added for `line`/`matrix`/`mattermost`/`sms` capturing current name/prefix/`instanceof` (step 5).
 
 **Dependencies:** none (this is the foundation).
 
@@ -83,15 +83,15 @@ Preserve the exemplary structure of the `theokit-gateways` monorepo (zero circul
 
 ---
 
-### M1 — [ ] Migrate split consumers to `chunkText`
+### M1 — [x] Migrate split consumers to `chunkText`
 
 **Objective:** Convert the 6 duplicated `split.ts` implementations to thin wrappers over core `chunkText`, one package at a time, guarded by golden tests.
 
 **Definition of done:**
 
-- [ ] findCutPoint-family (`slack`/`whatsapp`/`teams`/`discord`) `split.ts` converted to thin `chunkText` wrappers; each package's `split.test.ts` golden output identical before/after (step 6).
-- [ ] Intl.Segmenter-family (`line`/`sms`) `split.ts` converted to grapheme wrappers; golden output identical before/after (step 7).
-- [ ] `gateway-telegram/src/split.ts` left **unchanged** (distinct markdown split — verified untouched).
+- [x] findCutPoint-family (`slack`/`whatsapp`/`teams`/`discord`) `split.ts` converted to thin `chunkText` wrappers; each package's `split.test.ts` golden output identical before/after (step 6).
+- [x] Intl.Segmenter-family (`line`/`sms`) `split.ts` converted to grapheme wrappers; golden output identical before/after (step 7).
+- [x] `gateway-telegram/src/split.ts` left **unchanged** (distinct markdown split — verified untouched).
 
 **Dependencies:** M0 (requires `chunkText` + discord pin test).
 
@@ -102,15 +102,17 @@ Preserve the exemplary structure of the `theokit-gateways` monorepo (zero circul
 
 ---
 
-### M2 — [ ] Consolidate the configuration-error base
+### M2 — [x] Consolidate the configuration-error base
 
-**Objective:** Repoint the 8 verbatim `ConfigurationError` classes to extend the core `GatewayConfigurationError`, preserving name, message prefix, and `instanceof` behavior.
+**Objective:** Repoint the duplicated `ConfigurationError` classes to extend the core `GatewayConfigurationError`, preserving name, message prefix, and `instanceof` behavior.
+
+> **Scope correction (verified during M2):** the audit estimated 8 packages, but only **4** actually define a `ConfigurationError extends Error` class — `line`, `matrix`, `mattermost`, `sms`. The other four (`slack`, `teams`, `email`, `whatsapp`) `errors.ts` hold send-error mappers (`mapXError → SendResult`), not config-error classes. Confirmed by `grep -l "class ConfigurationError extends Error"`.
 
 **Definition of done:**
 
-- [ ] `email`/`line`/`matrix`/`mattermost`/`slack`/`sms`/`teams`/`whatsapp` `errors.ts` `ConfigurationError` extends the core base; package-specific subclasses (`SDKNotInstalledError`, etc.) stay local (step 8).
-- [ ] Each package's `errors.test.ts` (name, prefix, `instanceof`) assertions identical before/after.
-- [ ] ~7 duplicated class bodies removed; a single `instanceof GatewayConfigurationError` holds across all gateways.
+- [x] `line`/`matrix`/`mattermost`/`sms` `errors.ts` `ConfigurationError` extends the core base; package-specific subclasses (`SDKNotInstalledError`, `BackendNotInstalledError`, `EncryptedRoomError`) stay local (step 8).
+- [x] Each package's `errors.test.ts` (name, prefix, `instanceof`) assertions identical before/after.
+- [x] ~3 duplicated class bodies removed; a single `instanceof GatewayConfigurationError` holds across the migrated gateways.
 
 **Dependencies:** M0 (requires core base + the 4 backfilled `errors.test.ts`).
 
@@ -121,16 +123,16 @@ Preserve the exemplary structure of the `theokit-gateways` monorepo (zero circul
 
 ---
 
-### M3 — [ ] Document decisions + final green gate
+### M3 — [x] Document decisions + final green gate
 
 **Objective:** Record the accepted architectural trade-offs and land the full-suite verification.
 
 **Definition of done:**
 
-- [ ] `docs/adr/0001-message-event-closed-union.md` records the closed-union decision (why exhaustiveness beats OCP purity here) (step 9).
-- [ ] The per-package type-file naming convention (`types.ts` = public shapes vs `backend-types.ts` = seam) documented (step 9).
-- [ ] Final gate green: `pnpm -r typecheck && pnpm -r test && pnpm -r build && pnpm check`; `madge --circular` still clean; no new `exports` subpaths (step 10).
-- [ ] Validation checklist (report §11) fully checked.
+- [x] `docs/adr/0001-message-event-closed-union.md` records the closed-union decision (why exhaustiveness beats OCP purity here) (step 9).
+- [x] The per-package type-file naming convention (`types.ts` = public shapes vs `backend-types.ts` = seam) documented (step 9).
+- [x] Final gate green: `pnpm -r typecheck && pnpm -r test && pnpm -r build && pnpm check`; `madge --circular` still clean; no new `exports` subpaths (step 10).
+- [x] Validation checklist (report §11) fully checked.
 
 **Dependencies:** M1, M2 (all code changes landed before the final gate + ADRs).
 
