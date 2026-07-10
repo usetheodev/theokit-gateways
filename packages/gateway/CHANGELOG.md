@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- Architecture-hardening (roadmap M0–M3): three new public primitives on the core barrel, plus a hook-engine relocation. No breaking changes.
+
+  - `chunkText(text, options)` — transport-agnostic, boundary-preferring text chunker. Single-sources the message-splitting logic the platform adapters share; reproduces the Slack-family (fixed window, space boundary, UTF-16 surrogate guard) and Telegram-family (soft window, newline-only) algorithms via options. Validates inputs (positive-integer `limit`, `safeLimit <= limit`) and throws `RangeError` on misuse (fail-fast — no infinite loop).
+  - `chunkByGrapheme(text, options)` — grapheme-cluster-safe (`Intl.Segmenter`) chunker shared by the LINE/SMS adapters; never severs an emoji, regional-indicator pair, or combining sequence.
+  - `GatewayConfigurationError` base + `GatewayConfigurationErrorOptions` — shared base for per-adapter `ConfigurationError` classes.
+  - `HookExecutor` moved from `hooks/types.ts` to `hooks/executor.ts` (public API byte-identical; re-exported unchanged from the barrel).
+
 ## 0.4.1
 
 ### Patch Changes
@@ -8,15 +19,8 @@
 
 ## [Unreleased]
 
-### Added
-
-- `chunkText(text, options)` — transport-agnostic, boundary-preferring text chunker exported from the public barrel. Single-sources the message-splitting knowledge duplicated across the platform adapters; faithfully reproduces the Slack-family (fixed window, space boundary, surrogate guard) and Telegram-family (soft window, newline-only) algorithms via options (roadmap M0, arch-hardening).
-- `chunkByGrapheme(text, options)` — grapheme-cluster-safe (`Intl.Segmenter`) chunker exported from the public barrel. Single-sources the grapheme walk shared by the LINE and SMS adapters; never severs an emoji, regional-indicator pair, or combining sequence (roadmap M1, arch-hardening).
-- `GatewayConfigurationError` base + `GatewayConfigurationErrorOptions` — shared base for per-adapter `ConfigurationError` classes, exported from the public barrel (roadmap M0, arch-hardening).
-
 ### Changed
 
-- Moved the `HookExecutor` run engine from `hooks/types.ts` into `hooks/executor.ts` so the filename predicts its contents; `hooks/types.ts` now holds the hook contract (interfaces + `HookName`) only. Public API is byte-identical — `HookExecutor` and all hook interfaces are re-exported unchanged from the barrel (roadmap M0, arch-hardening).
 - **Documentation only:** added `src/README.md` documenting the 6 single-file sub-folder cluster (`adapter/`, `delivery/`, `hooks/`, `runner/`, `session/`, `types/`) as intentional bounded future-extensibility scaffold (T10.2 of plan `arch-review-fixes-2026-06-06`; FO#4 of 2026-06-06 architecture audit). Rationale + ADR cross-references (D170-D177) + 12-month re-evaluation trigger documented. No code change.
 
 ## 2.0.0
