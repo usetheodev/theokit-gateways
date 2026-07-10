@@ -1,12 +1,15 @@
 /**
  * Split a long string into ≤8000-char chunks for Teams messages (ADR D322).
  *
- * Break preference: `\n\n` → `\n` → ` `. UTF-16 surrogate-pair guard.
- *
- * EC-8 pattern absorbed: empty parts filtered.
+ * Thin wrapper over core `chunkText` (roadmap M1). Teams family: fixed 8000
+ * window, `\n\n` → `\n` → ` ` boundary preference, UTF-16 surrogate-pair guard,
+ * leading-whitespace strip, `trimParts` (EC-8 empty-part filter). Output is
+ * byte-identical to the previous implementation (pinned by `tests/split.test.ts`).
  *
  * @internal
  */
+
+import { chunkText } from "@theokit/gateway";
 
 /**
  * Sentinel runtime export — workaround for rollup-plugin-dts deep type-only
@@ -19,30 +22,13 @@ export const __splitMarker: unique symbol = Symbol("split");
 
 const TEAMS_MAX_TEXT = 8000;
 
-function findCut(remaining: string): number {
-  let cut = remaining.lastIndexOf("\n\n", TEAMS_MAX_TEXT);
-  if (cut < TEAMS_MAX_TEXT * 0.5) cut = remaining.lastIndexOf("\n", TEAMS_MAX_TEXT);
-  if (cut < TEAMS_MAX_TEXT * 0.5) cut = remaining.lastIndexOf(" ", TEAMS_MAX_TEXT);
-  if (cut <= 0) cut = TEAMS_MAX_TEXT;
-  if (cut < remaining.length) {
-    const code = remaining.charCodeAt(cut);
-    if (code >= 0xdc00 && code <= 0xdfff) cut -= 1;
-  }
-  return cut <= 0 ? TEAMS_MAX_TEXT : cut;
-}
-
 export function splitForTeams(text: string): string[] {
-  if (text.length <= TEAMS_MAX_TEXT) {
-    const single = text.trim();
-    return single.length > 0 ? [single] : [];
-  }
-  const chunks: string[] = [];
-  let remaining = text;
-  while (remaining.length > TEAMS_MAX_TEXT) {
-    const cut = findCut(remaining);
-    chunks.push(remaining.slice(0, cut));
-    remaining = remaining.slice(cut).replace(/^[\s]+/, "");
-  }
-  if (remaining.length > 0) chunks.push(remaining);
-  return chunks.map((p) => p.trim()).filter((p) => p.length > 0);
+  return chunkText(text, {
+    limit: TEAMS_MAX_TEXT,
+    boundaries: ["\n\n", "\n", " "],
+    lastResort: "last-boundary",
+    surrogateGuard: true,
+    stripLeading: /^\s+/,
+    trimParts: true,
+  });
 }

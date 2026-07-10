@@ -1,34 +1,27 @@
 /**
  * Discord's 2000-char per-message hard limit. Split agent responses on safe
- * boundaries before sending (T6.1). Extracted verbatim from `adapter.ts`
- * (roadmap M0, step 4) so it sits beside its sibling adapters' `split.ts` and
- * gains a pin test; behavior is unchanged.
+ * boundaries before sending (T6.1).
  *
- * Break preference: `\n\n` → `\n` → soft boundary. No surrogate guard and
- * newline-only leading strip (Telegram-family shape, minus markdown balancing).
+ * Thin wrapper over core `chunkText` (roadmap M1). Telegram family (minus
+ * markdown balancing): 2000 hard cap, 1900 soft window, `\n\n` → `\n` → window
+ * boundary preference, newline-only leading strip, no surrogate guard. Output
+ * is byte-identical to the previous implementation (pinned by
+ * `tests/split.test.ts`).
  *
  * @internal
  */
+
+import { chunkText } from "@theokit/gateway";
 
 const DISCORD_MAX_MESSAGE = 2000;
 const SAFE_DISCORD_CHUNK = 1900;
 
 export function splitForDiscord(text: string): string[] {
-  if (text.length <= DISCORD_MAX_MESSAGE) return [text];
-  const parts: string[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    if (remaining.length <= SAFE_DISCORD_CHUNK) {
-      parts.push(remaining);
-      break;
-    }
-    let boundary = remaining.lastIndexOf("\n\n", SAFE_DISCORD_CHUNK);
-    if (boundary < SAFE_DISCORD_CHUNK / 2) {
-      boundary = remaining.lastIndexOf("\n", SAFE_DISCORD_CHUNK);
-    }
-    if (boundary < SAFE_DISCORD_CHUNK / 2) boundary = SAFE_DISCORD_CHUNK;
-    parts.push(remaining.slice(0, boundary));
-    remaining = remaining.slice(boundary).replace(/^\n+/, "");
-  }
-  return parts;
+  return chunkText(text, {
+    limit: DISCORD_MAX_MESSAGE,
+    safeLimit: SAFE_DISCORD_CHUNK,
+    boundaries: ["\n\n", "\n"],
+    lastResort: "window",
+    stripLeading: /^\n+/,
+  });
 }

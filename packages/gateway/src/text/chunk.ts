@@ -127,3 +127,42 @@ export function chunkText(text: string, options: ChunkTextOptions): string[] {
   if (remaining.length > 0) parts.push(remaining);
   return finalize(parts);
 }
+
+/** Options for {@link chunkByGrapheme}. */
+export interface ChunkByGraphemeOptions {
+  /** If `text.length <= limit`, it is returned as a single chunk. */
+  readonly limit: number;
+  /**
+   * Max length per emitted part during the grapheme walk. Defaults to `limit`.
+   * Callers that reserve room for a per-part prefix (e.g. SMS `"(i/N) "`) pass a
+   * `partLimit` below `limit`.
+   */
+  readonly partLimit?: number;
+}
+
+/**
+ * Grapheme-cluster-safe chunker (`Intl.Segmenter`). Never severs an emoji,
+ * regional-indicator pair, or combining sequence. Distinct algorithm from
+ * {@link chunkText} — used by adapters that must respect grapheme boundaries
+ * (LINE, SMS) rather than search for whitespace boundaries.
+ *
+ * @public
+ */
+export function chunkByGrapheme(text: string, options: ChunkByGraphemeOptions): string[] {
+  const { limit, partLimit = limit } = options;
+  if (text.length === 0) return [""];
+  if (text.length <= limit) return [text];
+
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  const parts: string[] = [];
+  let buf = "";
+  for (const { segment } of segmenter.segment(text)) {
+    if (buf.length + segment.length > partLimit) {
+      if (buf.length > 0) parts.push(buf);
+      buf = "";
+    }
+    buf += segment;
+  }
+  if (buf.length > 0) parts.push(buf);
+  return parts;
+}

@@ -41,7 +41,12 @@ export {
   SessionRouter,
 } from "./session/router.js";
 // Text
-export { type ChunkTextOptions, chunkText } from "./text/chunk.js";
+export {
+  type ChunkByGraphemeOptions,
+  type ChunkTextOptions,
+  chunkByGrapheme,
+  chunkText,
+} from "./text/chunk.js";
 // Types
 export type {
   BaseMessageEvent,
