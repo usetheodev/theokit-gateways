@@ -104,7 +104,7 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 |---|---|
 | 📥 | "Criei notas.md com [5 itens]" — escolhe sozinho (leite, pão, etc.) |
 | ✅ | **NÃO pergunta** "qual conteúdo?". Arquivo `notas.md` aparece no diretório |
-| 🔍 | `cat /home/paulo/Projetos/usetheo/theokit-sdk/examples/telegram-pro/notas.md` mostra 5 linhas |
+| 🔍 | `cat ../../../theokit-sdk/examples/telegram-pro/notas.md` mostra 5 linhas — **arquivo ausente hoje** (verificado 2026-08-06) |
 
 ### 2.4 — MCP read_text_file
 
