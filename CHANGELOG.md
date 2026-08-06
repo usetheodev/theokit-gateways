@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- O `TEST-PLAN.md` do exemplo `telegram-pro` deixa de citar um caminho absoluto do layout antigo (`/home/paulo/Projetos/usetheo/...`) e sinaliza que o arquivo de notas referenciado não existe mais. (docs-reorg-2026-08)
+
 ### Deprecated
 
 ### Removed
