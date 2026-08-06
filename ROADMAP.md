@@ -129,7 +129,7 @@ Preserve the exemplary structure of the `theokit-gateways` monorepo (zero circul
 
 **Definition of done:**
 
-- [x] `docs/adr/0001-message-event-closed-union.md` records the closed-union decision (why exhaustiveness beats OCP purity here) (step 9).
+- [x] `wiki/decisions/adr-0001-message-event-closed-union.md` records the closed-union decision (why exhaustiveness beats OCP purity here) (step 9).
 - [x] The per-package type-file naming convention (`types.ts` = public shapes vs `backend-types.ts` = seam) documented (step 9).
 - [x] Final gate green: `pnpm -r typecheck && pnpm -r test && pnpm -r build && pnpm check`; `madge --circular` still clean; no new `exports` subpaths (step 10).
 - [x] Validation checklist (report §11) fully checked.

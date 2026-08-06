@@ -8,13 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Wiki do repositório em `wiki/`, um bundle Open Knowledge Format v0.2 com 24 concepts: os dois ADRs, os registros de review e de release, o modelo de release, a iniciativa de architecture hardening, as cinco primitivas do core e os onze packages. (docs-reorg-2026-08)
+
 ### Changed
 
 - O `TEST-PLAN.md` do exemplo `telegram-pro` deixa de citar um caminho absoluto do layout antigo (`/home/paulo/Projetos/usetheo/...`) e sinaliza que o arquivo de notas referenciado não existe mais. (docs-reorg-2026-08)
+- O ADR-0001 passa a ser citado em `wiki/decisions/adr-0001-message-event-closed-union.md` no docstring de `MessageEvent` e no `ROADMAP.md`, no lugar do caminho antigo em `docs/adr/`. (docs-reorg-2026-08)
 
 ### Deprecated
 
 ### Removed
+
+- `docs/`: os dois ADRs foram absorvidos por `wiki/decisions/` e o diretório foi removido. O conteúdo original segue recuperável no git em `c891696`. (docs-reorg-2026-08)
 
 ### Fixed
 
