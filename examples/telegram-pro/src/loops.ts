@@ -68,7 +68,7 @@ export function scheduleLoop(opts: ScheduleLoopOptions):
     };
   }
   if (opts.prompt.trim().length === 0) {
-    return { ok: false, reason: "Prompt vazio. Use /loop 30s <prompt>." };
+    return { ok: false, reason: "Empty prompt. Use /loop 30s <prompt>." };
   }
 
   const id = `loop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
