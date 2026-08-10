@@ -1,157 +1,159 @@
-# Roteiro de Teste — Telegram Pro
+# Test Runbook — Telegram Pro
 
-Teste completo de produção. Execute em ordem; cada fase é independente.
+A full production pass. Run the phases in order; each one is independent.
 
-**Bot rodando**: `@theo_paulo_bot` (id `8982152421`)
-**Workspace limpo**: `.theokit/` deletado, próximo `/start` cria agente fresco
-
----
-
-## Como usar este roteiro
-
-Pra cada passo:
-1. **Manda** → o texto/comando exato
-2. **Espera** → como o bot deve responder
-3. ✅ **Sucesso** → o que precisa estar verdade pra considerar passou
-4. 🔍 **Log** → o que olhar no terminal do bot se algo não bater
-
-Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
+**Bot under test**: `@theo_paulo_bot` (id `8982152421`) — ILLUSTRATIVE. This handle and id appear
+nowhere in the example's code; they were one person's development bot. Substitute your own
+throughout, and treat every `@handle` below the same way.
+**Clean workspace**: `.theokit/` deleted, so the next `/start` creates a fresh agent
 
 ---
 
-## Fase 0 — Boot + identidade (1 minuto)
+## How to use this runbook
 
-### 0.1 — Conexão
+For each step:
+1. **Send** -> the exact text or command
+2. **Expect** -> how the bot should reply
+3. ✅ **Pass** -> what has to be true for the step to count as passing
+4. 🔍 **Log** -> what to look for in the bot's terminal when something does not match
 
-| Passo | Detalhe |
+If a step fails, **move on to the next one** and note it at the end. Do not get stuck.
+
+---
+
+## Phase 0 — Boot + identity (1 minute)
+
+### 0.1 — Connection
+
+| Step | Detail |
 |---|---|
-| 🎯 | Abre Telegram, conversa com `@theo_paulo_bot` |
-| 📤 Manda | `/start` |
-| 📥 Espera | Boas-vindas + seu user-id + agent-id `tg-pro-dm-<seu-id>` |
-| ✅ Sucesso | Vê o agent-id no formato `tg-pro-dm-<num>` |
-| 🔍 Log | `user=<seu-id> chat=private text=/start` |
+| 🎯 | Open Telegram and start a chat with `@theo_paulo_bot` |
+| 📤 Send | `/start` |
+| 📥 Expect | Welcome message + your user id + agent id `tg-pro-dm-<your-id>` |
+| ✅ Pass | You see the agent id in the form `tg-pro-dm-<num>` |
+| 🔍 Log | `user=<your-id> chat=private text=/start` |
 
 ### 0.2 — Help
 
-| Passo | Detalhe |
+| Step | Detail |
 |---|---|
-| 📤 Manda | `/help` |
-| 📥 Espera | Lista com 11 comandos: `/start /help /me /recall /wiki /agents /skills /summary /cron /remind /reset` |
-| ✅ Sucesso | Todos os 11 estão lá + a seção "Modes detected automatically" |
+| 📤 Send | `/help` |
+| 📥 Expect | A list of 11 commands: `/start /help /me /recall /wiki /agents /skills /summary /cron /remind /reset` |
+| ✅ Pass | All 11 are present, plus the section "Modes detected automatically" |
 
 ---
 
-## Fase 1 — Memória + Persistência (3 minutos)
+## Phase 1 — Memory + persistence (3 minutes)
 
 ### 1.1 — Auto-write via "Remember:"
 
 | 📤 | `Remember: meu time é Corinthians` |
 |---|---|
-| 📥 | Confirmação ("Got it" ou similar) |
-| ✅ | Aparece o fato salvo |
-| 🔍 | No disco: `.theokit/memory/MEMORY.md` deve ter `- meu time é Corinthians` |
+| 📥 | A confirmation ("Got it" or similar) |
+| ✅ | The saved fact appears |
+| 🔍 | On disk: `.theokit/memory/MEMORY.md` should contain `- meu time é Corinthians` |
 
 ### 1.2 — Mais um fato
 
 | 📤 | `Remember: meu editor favorito é Helix` |
 |---|---|
-| ✅ | Mesma confirmação |
+| ✅ | Same confirmation |
 
-### 1.3 — Listar fatos (sem LLM)
+### 1.3 — List facts (no LLM)
 
 | 📤 | `/me` |
 |---|---|
 | 📥 | `1. meu time é Corinthians\n2. meu editor favorito é Helix` (ou similar) |
 | ✅ | Os 2 fatos aparecem numerados |
 
-### 1.4 — Recall de sessões via memory_search
+### 1.4 — Session recall via memory_search
 
 | 📤 | `/recall corinthians` |
 |---|---|
-| 📥 | Encontra a conversa onde você mencionou Corinthians |
-| ✅ | LLM cita o turn anterior, NÃO diz "memory_search não disponível" |
+| 📥 | Finds the conversation where you mentioned Corinthians |
+| ✅ | The LLM quotes the earlier turn and does NOT say "memory_search not available" |
 | 🔍 | `[bot] result status=finished` no log |
 
-### 1.5 — LLM usa memória em conversa natural
+### 1.5 — The LLM uses memory in ordinary conversation
 
 | 📤 | `Sugere uma decoração de quarto baseada nas minhas preferências` |
 |---|---|
 | 📥 | LLM relaciona Helix ou Corinthians de alguma forma |
-| ✅ | Resposta não é genérica — incorpora os fatos |
+| ✅ | The reply is not generic — it incorporates the facts |
 
 ---
 
-## Fase 2 — Filesystem + Shell + Policy (3 minutos)
+## Phase 2 — Filesystem + Shell + Policy (3 minutes)
 
 ### 2.1 — Shell tool: list directory
 
 | 📤 | `Lista os arquivos do diretório atual` |
 |---|---|
-| 📥 | Lista incluindo `package.json`, `src`, `README.md`, `.theokit`, etc. |
-| ✅ | Vê os arquivos reais do workspace, NÃO inventa |
+| 📥 | A listing including `package.json`, `src`, `README.md`, `.theokit`, etc. |
+| ✅ | You see the workspace's real files; it does NOT invent them |
 
-### 2.2 — Policy hook block (CRÍTICO)
+### 2.2 — Policy hook block (CRITICAL)
 
 | 📤 | `roda rm -rf /` |
 |---|---|
 | 📥 | Bot recusa e cita a policy: "Policy denied" ou similar |
-| ✅ | **NÃO executa**. Vê palavra "blocked", "policy", ou "denied" na resposta |
-| 🔍 | Log NÃO mostra arquivos sumindo |
+| ✅ | **Does NOT execute**. You see the word "blocked", "policy", ou "denied" in the reply |
+| 🔍 | The log does NOT show files disappearing |
 
 ### 2.3 — MCP write_file (action bias)
 
 | 📤 | `Cria notas.md com 5 itens da minha lista de compras` |
 |---|---|
 | 📥 | "Criei notas.md com [5 itens]" — escolhe sozinho (leite, pão, etc.) |
-| ✅ | **NÃO pergunta** "qual conteúdo?". Arquivo `notas.md` aparece no diretório |
-| 🔍 | `cat ../../../theokit-sdk/examples/telegram-pro/notas.md` mostra 5 linhas — **arquivo ausente hoje** (verificado 2026-08-06) |
+| ✅ | **Does NOT ask** "which content?". The file `notas.md` appears in the directory |
+| 🔍 | `cat ../../../theokit-sdk/examples/telegram-pro/notas.md` shows 5 lines — **file missing hoje** (verificado 2026-08-06) |
 
 ### 2.4 — MCP read_text_file
 
 | 📤 | `Lê o package.json e me diz qual a versão do TypeScript` |
 |---|---|
-| 📥 | Resposta com a versão (ex: `^5.8.0`) |
+| 📥 | A reply carrying the version (e.g. `^5.8.0`) |
 | ✅ | Cita um número de versão real |
 
-### 2.5 — Cria + lê outro arquivo
+### 2.5 — Create and read another file
 
 | 📤 | `Cria diario.md com 3 itens do dia de hoje em formato bullet` |
 |---|---|
-| 📥 | Confirma criação |
+| 📥 | Confirms creation |
 | 📤 | `Que arquivos .md tem no diretório?` |
-| 📥 | Lista incluindo notas.md + diario.md |
+| 📥 | A listing including notas.md + diario.md |
 | ✅ | Both visíveis |
 
 ---
 
-## Fase 3 — Vision multi-modal (2 minutos)
+## Phase 3 — Vision multi-modal (2 minutes)
 
-### 3.1 — Sticker estático
+### 3.1 — Static sticker
 
 | 📤 | (manda QUALQUER sticker estático — não animado) |
 |---|---|
 | 📥 | Descrição em 1-2 frases do que vê |
-| ✅ | Descrição específica (cor, emoção, forma) — NÃO genérica |
+| ✅ | Descrição específica (cor, emoção, forma) — NOT genérica |
 | 🔍 | `[sticker] described (cached=false) in XXXms: ...` |
 
-### 3.2 — Mesmo sticker (cache hit)
+### 3.2 — Same sticker (cache hit)
 
-| 📤 | (manda o MESMO sticker de novo) |
+| 📤 | (send the SAME sticker again) |
 |---|---|
 | 📥 | Mesma descrição (ou continuação) |
-| ✅ | Resposta vem em <1s |
+| ✅ | The reply arrives in under 1s |
 | 🔍 | `[sticker] described (cached=true) in 0ms: ...` ← **cache hit** |
 
 ### 3.3 — Foto com caption
 
 | 📤 | (foto qualquer com legenda) `"isso parece um cachorro?"` |
 |---|---|
-| 📥 | Resposta baseada no que VÊ + a pergunta |
-| ✅ | Combina ambas — não ignora a foto nem a caption |
+| 📥 | A reply based on what it SEES plus the question |
+| ✅ | It combines both — does not ignore the photo or the caption |
 
 ---
 
-## Fase 4 — Inline Buttons (2 minutos)
+## Phase 4 — Inline Buttons (2 minutes)
 
 ### 4.1 — Forçar buttons em conversa
 
@@ -165,7 +167,7 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 | 📤 | (toca um dos botões) |
 |---|---|
 | 📥 | Bot continua naturalmente como se você tivesse digitado |
-| ✅ | NÃO pede pra você "escolher de novo" |
+| ✅ | NOT pede pra você "escolher de novo" |
 | 🔍 | Log: `text=[user tapped button: ...]` |
 
 ### 4.3 — Caso destrutivo (yes/no)
@@ -175,77 +177,77 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 | 📥 | Bot oferece `[Sim] [Não]` ou similar |
 | ✅ | Aparecem botões de confirmação |
 | 📤 | (toca "Não") |
-| 📥 | Bot confirma que não apagou |
+| 📥 | Bot confirma que not apagou |
 
 ---
 
-## Fase 5 — Skills + Subagents + Wiki (3 minutos)
+## Phase 5 — Skills + Subagents + Wiki (3 minutes)
 
 ### 5.1 — Listar skills
 
 | 📤 | `/skills` |
 |---|---|
 | 📥 | 2 skills: `recipe-suggest` + `morning-routine` com descrições |
-| ✅ | Ambas aparecem, descrição completa |
+| ✅ | Both appear, with a full description |
 
 ### 5.2 — Skill em ação
 
 | 📤 | `me sugere uma receita rápida pro jantar` |
 |---|---|
 | 📥 | LLM dá uma receita estruturada (ingredients + steps) |
-| ✅ | Format minimamente segue o skill (não é apenas texto livre) |
+| ✅ | The format broadly follows the skill (not just free text) |
 
-### 5.3 — Subagents (honesto sobre cloud-only)
+### 5.3 — Subagents (honest about being cloud-only)
 
 | 📤 | `/agents` |
 |---|---|
 | 📥 | Lista `code_writer` + `researcher` + **disclaimer "cloud-only no v1.0"** |
-| ✅ | A mensagem é honesta sobre limitação |
+| ✅ | The message is honest about the limitation |
 
 ### 5.4 — Wiki search (server-side)
 
 | 📤 | `/wiki tools` |
 |---|---|
 | 📥 | Excerpt do `tools.md` com lista de tools disponíveis |
-| ✅ | Vê o conteúdo formatado em code block |
+| ✅ | You see o content formatado em code block |
 
 ### 5.5 — Wiki second file
 
 | 📤 | `/wiki deployment` |
 |---|---|
 | 📥 | Excerpt do `deployment.md` com notas de deploy |
-| ✅ | Conteúdo aparece (não "não há entrada") |
+| ✅ | Content appears (not "no entries") |
 
 ### 5.6 — Wiki miss
 
 | 📤 | `/wiki blockchain` |
 |---|---|
-| 📥 | `Não há entrada na wiki sobre "blockchain".` |
-| ✅ | Resposta clara de miss, NÃO inventa conteúdo |
+| 📥 | `Does not há entrada na wiki sobre "blockchain".` |
+| ✅ | A clear miss reply, does not invent content |
 
 ---
 
-## Fase 6 — Cron + Dreaming (3 minutos)
+## Phase 6 — Cron + Dreaming (3 minutes)
 
 ### 6.1 — Lista cron jobs
 
 | 📤 | `/cron` |
 |---|---|
-| 📥 | Pelo menos 1 job: `tg-pro:nightly-dream` agendado pra `0 3 * * *` |
+| 📥 | At least 1 job: `tg-pro:nightly-dream` scheduled for `0 3 * * *` |
 | ✅ | Próxima execução visível |
 
-### 6.2 — Cria reminder
+### 6.2 — Create reminder
 
 | 📤 | `/remind */2 * * * * \| beba água` |
 |---|---|
 | 📥 | "Reminder scheduled: cron-..." + próximo fire |
 | ✅ | ID retornado começa com `tg-pro:remind:` |
 
-### 6.3 — Reminder dispara (espera 2 min)
+### 6.3 — Reminder fires (wait 2 min)
 
-| ⏰ | (Aguarda 2 minutos sem fazer nada) |
+| ⏰ | (Wait 2 minutes doing nothing) |
 |---|---|
-| 📥 | Log mostra cron fire — NÃO precisa ser entrega Telegram (o reminder dispara `agent.send` interno) |
+| 📥 | The log shows the cron firing — it does not have to be a Telegram delivery (the reminder triggers an internal `agent.send`) |
 | 🔍 | Log: `[bot] result status=finished` em horário par |
 
 ### 6.4 — Dreaming sweep on-demand
@@ -253,18 +255,18 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 | 📤 | `/summary` |
 |---|---|
 | 📥 | Status: `Sweep status: ok` + estatísticas (facts before/after, duplicates removed, clusters) |
-| ✅ | Pelo menos `Facts: 2 → 2` (não pode regredir) |
-| 🔍 | `.theokit/memory/notes/` deve ter um arquivo `cluster-XXX.md` |
+| ✅ | At least `Facts: 2 -> 2` (it must not regress) |
+| 🔍 | `.theokit/memory/notes/` should contain um file `cluster-XXX.md` |
 
 ### 6.5 — Remove reminder
 
 | 📤 | `/cron` (anota o ID do reminder) |
 |---|---|
-| 📤 | (se quiser parar antes de continuar): em outro terminal, `rm -rf .theokit/cron/jobs.json` e restart bot. Pula esse passo se não tiver acesso. |
+| 📤 | (to stop before continuing): in another terminal, `rm -rf .theokit/cron/jobs.json` and restart the bot. Skip this passo se não tiver acesso. |
 
 ---
 
-## Fase 7 — Reset + Restart-proof (4 minutos)
+## Phase 7 — Reset + Restart-proof (4 minutes)
 
 ### 7.1 — Reset thread
 
@@ -277,37 +279,37 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 
 | 📤 | `/me` |
 |---|---|
-| 📥 | Ainda mostra Corinthians + Helix |
+| 📥 | Still shows Corinthians + Helix |
 | ✅ | Fatos sobreviveram ao reset |
 
 ### 7.3 — `/start` fresh thread
 
 | 📤 | `/start` |
 |---|---|
-| 📥 | Boas-vindas (thread nova, mas user-id mesmo) |
+| 📥 | Boas-vindas (thread nova, mas user-id same) |
 | ✅ | Funciona — `/me` continua mostrando os fatos |
 
-### 7.4 — Restart-proof (CRÍTICO — precisa terminal)
+### 7.4 — Restart-proof (CRITICAL — needs a terminal)
 
 | 🛠️ | No terminal do bot: `Ctrl+C` |
 |---|---|
 | 📥 | Bot mostra "Shutting down — your data is safe on disk" |
 | 🛠️ | `pnpm dev` (reinicia) |
 | 📥 | Bot reconecta — log "Connected as @theo_paulo_bot" |
-| 📤 | (no Telegram, sem fazer /start) `me lembra do meu time?` |
+| 📤 | (in Telegram, without running /start) `me lembra do meu time?` |
 | 📥 | LLM responde "Corinthians" — **prova que o restart preservou estado** |
 | ✅ | **Memória sobreviveu kill-9 + restart** |
 
 ---
 
-## Fase 8 — Error display (1 minuto)
+## Phase 8 — Error display (1 minute)
 
 ### 8.1 — Forçar rate-limit (opcional)
 
 | 📤 | Manda 10-15 mensagens rápidas em <30s |
 |---|---|
 | 📥 | Eventualmente: `⚠️ Run falhou sem evento (provavelmente rate-limit do OpenRouter...)` |
-| ✅ | Mensagem **clara em PT** sobre rate-limit (não "(run error)" sem detalhe) |
+| ✅ | A **clear message** about the rate limit (not a bare "(run error)" with no detail) |
 
 ### 8.2 — Verifica log estruturado
 
@@ -317,21 +319,21 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 
 ---
 
-## Fase 9 — Grupo + Forum (OPCIONAL, 5 min)
+## Phase 9 — Grupo + Forum (OPCIONAL, 5 min)
 
-> Pula se não quiser configurar grupo agora.
+> Skip this if you do not want to set up a group now.
 
-### 9.1 — Cria grupo + adiciona bot
+### 9.1 — Create grupo + adiciona bot
 
 1. No Telegram: `+ New Group` → nome qualquer
 2. Add member: `@theo_paulo_bot`
-3. (Ainda no Telegram) `@BotFather` → `/mybots` → `@theo_paulo_bot` → `Bot Settings` → `Group Privacy` → **Disable**
+3. (Still in Telegram) `@BotFather` → `/mybots` → `@theo_paulo_bot` → `Bot Settings` → `Group Privacy` → **Disable**
 
 ### 9.2 — Bot fica calado sem mention
 
 | 📤 | (no grupo) `oi pessoal` |
 |---|---|
-| 📥 | Bot **não responde** |
+| 📥 | Bot **not responde** |
 | ✅ | Group policy ativa |
 
 ### 9.3 — Bot responde com mention
@@ -344,7 +346,7 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 ### 9.4 — Forum topics (CONFIG do grupo)
 
 1. Long-press no nome do grupo → `Edit` → liga `Topics`
-2. Cria topic `#trabalho` e `#casa`
+2. Create topic `#trabalho` e `#casa`
 
 ### 9.5 — Topics isolados
 
@@ -352,7 +354,7 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 |---|---|
 | 📥 | Bot confirma |
 | 📤 | (no #casa) `@theo_paulo_bot qual nome do projeto?` |
-| 📥 | Bot **não sabe** (sessão diferente) |
+| 📥 | Bot **not sabe** (session diferente) |
 | ✅ | Topics são threads isoladas |
 | 📤 | (volta ao #trabalho) `@theo_paulo_bot qual nome do projeto?` |
 | 📥 | Bot responde "Apollo" |
@@ -364,12 +366,12 @@ Se algum passo falhar, **pula pro próximo** e anota no final. Não fica preso.
 Pra considerar **production-ready**:
 
 - ✅ Fases 0-7 todas passam (8 e 9 são opcionais)
-- ✅ Bot sobrevive `kill -9` com memória + sessões preservadas
+- ✅ Bot sobrevive `kill -9` com memory + sessions preservadas
 - ✅ Policy hook bloqueia `rm -rf /`
-- ✅ Action-bias funciona (`Cria X com Y` não pergunta)
+- ✅ Action bias works (`Cria X com Y` does not ask back)
 - ✅ `/wiki` funciona deterministicamente (server-side)
 - ✅ Vision cache visível (segundo sticker em <1s)
-- ✅ Mensagens de erro são informativas (`/recall`, run errors)
+- ✅ Error messages are informative (`/recall`, run errors)
 
 **Se TODOS os critérios acima passarem, o bot está production-ready.**
 
@@ -377,19 +379,19 @@ Pra considerar **production-ready**:
 
 ## Como reportar bugs
 
-Pra cada falha, abra issue ou me manda:
+For each failure, open an issue or send me:
 
 ```
-### Fase X.Y — <título do passo>
-**Esperava**: <resposta esperada>
-**Aconteceu**: <resposta real>
-**Log**: <linha do log com [bot] ... ou [voice]/[sticker]/etc>
+### Phase X.Y — <título do passo>
+**Esperava**: <reply esperada>
+**Aconteceu**: <reply real>
+**Log**: <the log line carrying [bot] ... ou [voice]/[sticker]/etc>
 **Reprodução**: <texto exato mandado>
 ```
 
 ---
 
-## Estado dos arquivos durante o teste
+## File state during the run
 
 ```
 examples/telegram-pro/
@@ -397,7 +399,7 @@ examples/telegram-pro/
 ├── diario.md                           ← criado em 2.5
 └── .theokit/
     ├── agents/
-    │   ├── registry.json               ← stale-free agora
+    │   ├── registry.json               <- now stale-free
     │   └── tg-pro-dm-<userId>/messages.jsonl
     ├── memory/
     │   ├── MEMORY.md                   ← Corinthians + Helix
@@ -415,4 +417,4 @@ examples/telegram-pro/
     └── context.json
 ```
 
-Inspeciona qualquer arquivo durante o teste com `cat` ou `tree .theokit`.
+Inspect any file during the run with `cat` ou `tree .theokit`.

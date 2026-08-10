@@ -80,16 +80,6 @@ const FILE_ALLOWLIST = new Set<string>([
   "examples/telegram-pro/src/system-prompt.ts",
   // Same file category: a comment quoting "Sao_Paulo" to show an underscore that breaks Markdown V1.
   "examples/telegram-pro/src/commands.ts",
-  // A 418-line MANUAL runbook, written for the person executing it. Worth a careful human
-  // translation rather than a machine pass in the middle of another task — tracked as B-066, and
-  // this entry is deleted the day that lands.
-  "examples/telegram-pro/TEST-PLAN.md",
-  // B-065 — a 418-line MANUAL test script for the telegram-pro example, written in Portuguese for
-  // the person running it. Exempted rather than machine-translated: a runbook someone follows
-  // step by step is worth translating carefully by a human who can check each expectation still
-  // reads right, and doing it badly is worse than leaving it. Tracked as its own item (B-066); this
-  // entry is deleted the day that lands.
-  "examples/telegram-pro/TEST-PLAN.md",
   // A recall probe whose assertion is what a model ANSWERS. It matches both spellings of a Brazilian
   // city because a model replying in Portuguese uses the accented one; dropping that alternative to
   // satisfy this gate would narrow what the probe accepts and weaken the audit it exists to run.
