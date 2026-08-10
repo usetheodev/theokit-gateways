@@ -4,7 +4,7 @@
  * Plan: arch-review-fixes-2026-06-06 § Phase 8 / T8.1
  *
  * The previous implementation silently swallowed `bot.stop()` errors with
- * `catch { /* ignore *​/ }` — violating Inquebrável Rule 8. The catch is
+ * `catch { /* ignore *​/ }` — violating Unbreakable Rule 8. The catch is
  * intentional (disconnect must be idempotent + safe even when the bot is
  * already torn down), but the absence of diagnostic made transient
  * `bot.stop()` failures invisible. This test asserts that the catch path
@@ -42,7 +42,7 @@ describe("TelegramAdapter.disconnect — silent-catch elimination (PV#7 / T8.1)"
       // disconnect() must NOT throw (idempotent contract preserved)
       await expect(adapter.disconnect()).resolves.toBeUndefined();
 
-      // Structured stderr emission required by Inquebrável Rule 8
+      // Structured stderr emission required by Unbreakable Rule 8
       const joined = stderrWrites.join("");
       expect(joined).toContain("[theokit-gateway-telegram]");
       expect(joined).toContain("bot already stopped");

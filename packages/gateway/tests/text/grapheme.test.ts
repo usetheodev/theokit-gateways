@@ -65,7 +65,7 @@ const smsViaCore = (t: string): string[] => {
 };
 
 function makeCorpus(): string[] {
-  const corpus: string[] = ["", "short", "🇧🇷🇧🇷 regional indicators", "a̐éö̲ combining"];
+  const corpus: string[] = ["", "short", "🇯🇵🇯🇵 regional indicators", "a̐éö̲ combining"];
   const word = "the quick brown fox 🦊 ";
   for (const size of [1592, 1593, 1599, 1600, 1601, 3200, 4999, 5000, 5001, 12000]) {
     let s = "";

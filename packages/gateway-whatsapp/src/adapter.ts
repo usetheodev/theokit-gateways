@@ -68,7 +68,7 @@ export function digitsOnly(s: string): string {
 }
 
 /**
- * Adapter façade. Implements `BasePlatformAdapter` (D172).
+ * Adapter facade. Implements `BasePlatformAdapter` (D172).
  *
  * Use `WhatsAppAdapter.fromCloud(config)` or `WhatsAppAdapter.fromWeb(config)`
  * once the backend factories land (or pass `backend` directly in constructor).

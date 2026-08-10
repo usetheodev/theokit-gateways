@@ -141,8 +141,8 @@ describe("WhatsAppAdapter — group mention filter (D309 + EC-7)", () => {
     const variants = [
       "@5511999999999 hi",
       "@+5511999999999 hi",
-      "ola 55 11 99999-9999 vc esta ai?", // digits in order, with separators
-      "+55 (11) 99999-9999 fala", // E.164 with parens + dash + plus
+      "hey 55 11 99999-9999 you around?", // digits in order, with separators
+      "+55 (11) 99999-9999 yo", // E.164 with parens + dash + plus
     ];
     for (const text of variants) {
       const backend = new FakeBackend();
