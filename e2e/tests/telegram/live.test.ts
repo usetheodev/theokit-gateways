@@ -11,6 +11,12 @@
  *
  * Every message carries a run marker, so anything that escapes into a real chat
  * is identifiable as test traffic.
+ *
+ * The target is a DM with the bot, so `channel.type` is "dm". The adapter does
+ * not branch on type when sending — it needs the numeric chat id and nothing
+ * else — so declaring "group" here passed just as well. It was still wrong, and
+ * a test that states something false about its own fixture is a test that will
+ * mislead the next person to read it, whether or not today's code notices.
  */
 
 import { TelegramAdapter } from "@theokit/gateway-telegram";
@@ -58,7 +64,7 @@ describeLive(TELEGRAM, "outbound", () => {
     try {
       await adapter.connect();
       const result = await adapter.sendMessage({
-        channel: { id: required("TELEGRAM_TEST_CHAT_ID"), type: "group" },
+        channel: { id: required("TELEGRAM_TEST_CHAT_ID"), type: "dm" },
         text: `${marker} outbound ok`,
       });
       expect(result.ok).toBe(true);
@@ -78,7 +84,7 @@ describeLive(TELEGRAM, "outbound", () => {
       await adapter.connect();
       const long = `${marker} ${"paragraph.\n\n".repeat(500)}`;
       const result = await adapter.sendMessage({
-        channel: { id: required("TELEGRAM_TEST_CHAT_ID"), type: "group" },
+        channel: { id: required("TELEGRAM_TEST_CHAT_ID"), type: "dm" },
         text: long,
       });
       expect(result.ok).toBe(true);
@@ -109,7 +115,7 @@ describeLive(TELEGRAM, "outbound", () => {
     try {
       await adapter.connect();
       const result = await adapter.sendMessage({
-        channel: { id: required("TELEGRAM_TEST_CHAT_ID"), type: "group" },
+        channel: { id: required("TELEGRAM_TEST_CHAT_ID"), type: "dm" },
         text: "",
       });
       expect(result.ok).toBe(false);
