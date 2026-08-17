@@ -73,6 +73,9 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
           SLACK_TEST_CHANNEL_ID: ${{ secrets.SLACK_TEST_CHANNEL_ID }}
+          # A USER token (chat:write user scope). The inbound probe must come
+          # from an identity that is not the bot, or the loop guard drops it.
+          SLACK_TEST_USER_TOKEN: ${{ secrets.SLACK_TEST_USER_TOKEN }}
           MATRIX_HOMESERVER_URL: ${{ secrets.MATRIX_HOMESERVER_URL }}
           MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
           MATRIX_USER_ID: ${{ secrets.MATRIX_USER_ID }}
@@ -122,6 +125,9 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
           SLACK_TEST_CHANNEL_ID: ${{ secrets.SLACK_TEST_CHANNEL_ID }}
+          # A USER token (chat:write user scope). The inbound probe must come
+          # from an identity that is not the bot, or the loop guard drops it.
+          SLACK_TEST_USER_TOKEN: ${{ secrets.SLACK_TEST_USER_TOKEN }}
           MATRIX_HOMESERVER_URL: ${{ secrets.MATRIX_HOMESERVER_URL }}
           MATRIX_ACCESS_TOKEN: ${{ secrets.MATRIX_ACCESS_TOKEN }}
           MATRIX_USER_ID: ${{ secrets.MATRIX_USER_ID }}

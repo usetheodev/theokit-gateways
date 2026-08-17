@@ -125,7 +125,9 @@ export const PLATFORMS: readonly PlatformSpec[] = [
       },
     ],
     caveat:
-      "Socket Mode must be ON for inbound; without it the app token is accepted but no events arrive.",
+      "Socket Mode must be ON for inbound; without it the app token is accepted but no events arrive. " +
+      "The inbound probe additionally needs SLACK_TEST_USER_TOKEN — an `xoxp-` token from the app's " +
+      "chat:write USER scope — because a message posted with the BOT token is dropped by the loop guard.",
   },
   {
     id: "matrix",

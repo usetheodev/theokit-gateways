@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@theokit/gateway": "workspace:*",
+    "@theokit/gateway-slack": "workspace:*",
     "@theokit/gateway-telegram": "workspace:*",
     "@types/node": "^22.10.0",
     "telegram": "^2.26.22",
