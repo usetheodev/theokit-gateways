@@ -72,6 +72,23 @@ export async function createWebhookServer(opts: WebhookServerOptions): Promise<W
   // Raw-body capture middleware — must run BEFORE express.urlencoded/json,
   // since signature verification needs the exact byte sequence.
   const rawCapture = (req: Request, _res: Response, next: NextFunction) => {
+    // Someone else already drained the stream — a global `express.json()` or
+    // `express.urlencoded()` mounted ahead of this router is the usual cause.
+    // Without this branch, `req.on("end")` never fires for a stream that already
+    // ended, `next()` is never called, and the request HANGS with no response:
+    // the provider times out and retries, and nothing is logged. Failing loudly
+    // and continuing is strictly better — verification then refuses the empty
+    // body with a 401, a visible symptom that points at the real cause.
+    if (req.readableEnded || req.complete) {
+      process.stderr.write(
+        "[gateway-sms] raw body already consumed before signature capture — mount this router " +
+          "BEFORE any global body parser, or signature verification cannot see the bytes it " +
+          "must hash\n",
+      );
+      (req as Request & { rawBody: string }).rawBody = "";
+      next();
+      return;
+    }
     let buf = "";
     req.setEncoding("utf8");
     req.on("data", (chunk: string) => {

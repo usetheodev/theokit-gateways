@@ -104,9 +104,6 @@ importers:
       '@line/bot-sdk':
         specifier: ^9.0.0
         version: 9.9.0
-      express:
-        specifier: ^4.18.0
-        version: 4.22.2
     devDependencies:
       '@theokit/gateway':
         specifier: workspace:*
@@ -117,6 +114,9 @@ importers:
       '@types/express':
         specifier: ^4.17.0
         version: 4.17.25
+      express:
+        specifier: ^4.18.0
+        version: 4.22.2
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(postcss@8.5.15)(typescript@5.9.3)
@@ -208,19 +208,6 @@ importers:
         version: 4.4.3
 
   packages/gateway-sms:
-    dependencies:
-      '@vonage/server-sdk':
-        specifier: ^3.0.0
-        version: 3.27.0
-      express:
-        specifier: ^4.18.0
-        version: 4.22.2
-      plivo:
-        specifier: ^4.0.0
-        version: 4.78.0
-      twilio:
-        specifier: ^5.0.0
-        version: 5.13.1
     devDependencies:
       '@theokit/gateway':
         specifier: workspace:*
@@ -231,12 +218,24 @@ importers:
       '@types/express':
         specifier: ^4.17.0
         version: 4.17.25
+      '@vonage/server-sdk':
+        specifier: ^3.0.0
+        version: 3.27.0
+      express:
+        specifier: ^4.18.0
+        version: 4.22.2
       libphonenumber-js:
         specifier: ^1.10.0
         version: 1.13.6
+      plivo:
+        specifier: ^4.0.0
+        version: 4.78.0
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(postcss@8.5.15)(typescript@5.9.3)
+      twilio:
+        specifier: ^5.0.0
+        version: 5.13.1
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
