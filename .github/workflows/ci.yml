@@ -44,18 +44,24 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
 
-      # Ordered cheapest-first so an obvious failure reports in seconds rather
-      # than after the whole suite. Every step is a hard gate: no `continue-on-error`,
-      # because a step that cannot fail the build is a step that is not checking
-      # anything.
+      # Every step is a hard gate: no `continue-on-error`, because a step that
+      # cannot fail the build is a step that is not checking anything.
+      #
+      # Lint first because it needs nothing and reports in seconds. Then BUILD,
+      # then typecheck — that order is not cosmetic. The adapters import
+      # `@theokit/gateway`, whose type declarations are emitted by its build, so
+      # `typecheck` before `build` fails on a clean checkout with "Cannot find
+      # module '@theokit/gateway'". It passes locally either way, because dist/
+      # is already lying around from a previous run. This workflow's very first
+      # execution caught exactly that.
       - name: Lint and format check
         run: pnpm check
 
-      - name: Typecheck
-        run: pnpm -r run typecheck
-
       - name: Build
         run: pnpm build
+
+      - name: Typecheck
+        run: pnpm -r run typecheck
 
       - name: Unit and contract tests
         run: pnpm -r run test
