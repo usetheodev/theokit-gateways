@@ -41,12 +41,56 @@ describe("splitForSMS (D393, EC-7)", () => {
     const parts = splitForSMS(text, 100);
     expect(parts.length).toBeGreaterThan(1);
     for (const p of parts) {
-      // 100 cap, minus 8 reserved for "(i/N) ".
+      // 100 cap, minus the width reserved for "(i/N) ".
       expect(p.length).toBeLessThanOrEqual(100);
     }
   });
 
   it("empty text returns single empty string", () => {
     expect(splitForSMS("")).toEqual([""]);
+  });
+
+  describe("the (i/N) prefix must fit inside the cap at any part count", () => {
+    /**
+     * The reservation used to be the constant 8, commented `"(99/99) " worst
+     * case`. It is only the worst case below 100 parts: `"(100/126) "` is 10.
+     * Past the hundredth part every prefix outgrew its reservation and each part
+     * shipped 2 chars over the cap the caller declared — the provider rejects it,
+     * so a long agent reply died at part 100.
+     *
+     * The guarding test used `"x".repeat(200)` with `limit: 100`: 3 parts, prefix
+     * always 6 chars, reservation never stressed. A test that cannot reach the
+     * failing regime is not a guard, it is decoration. These reach it.
+     */
+    it.each([
+      ["3-digit part counts", 200_000, 1600],
+      ["a low cap driving thousands of parts", 50_000, 40],
+      ["exactly around the 99→100 boundary", 1600 * 100, 1600],
+    ])("holds the cap with %s", (_label, size, limit) => {
+      const parts = splitForSMS("x".repeat(size), limit);
+      const over = parts.filter((p) => p.length > limit);
+      expect(over).toEqual([]);
+    });
+
+    it("still labels every part correctly once the prefix widens", () => {
+      const parts = splitForSMS("x".repeat(200_000), 1600);
+      expect(parts.length).toBeGreaterThan(99);
+      for (let i = 0; i < parts.length; i += 1) {
+        expect(parts[i]?.startsWith(`(${i + 1}/${parts.length}) `)).toBe(true);
+      }
+    });
+
+    it("loses no characters when the reservation is recomputed", () => {
+      const text = "x".repeat(200_000);
+      const parts = splitForSMS(text, 1600);
+      const joined = parts.map((p) => p.replace(/^\(\d+\/\d+\) /, "")).join("");
+      expect(joined).toBe(text);
+    });
+
+    it("rejects a limit too small to carry any payload", () => {
+      // Reserving the prefix out of a tiny cap would leave a non-positive
+      // partLimit. Failing loudly beats emitting parts that are all prefix.
+      expect(() => splitForSMS("x".repeat(100), 4)).toThrow(RangeError);
+    });
   });
 });
