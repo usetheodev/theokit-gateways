@@ -137,23 +137,33 @@ export const PLATFORMS: readonly PlatformSpec[] = [
     credentials: [
       {
         name: "MATRIX_HOMESERVER_URL",
-        what: "Homeserver base URL",
-        where: "e.g. https://matrix.org, or your own server",
+        what: "Homeserver base URL — provisioned, not created by hand",
+        where: "pnpm --filter @theokit/gateway-e2e matrix:up",
       },
       {
         name: "MATRIX_ACCESS_TOKEN",
-        what: "Access token for the bot account",
-        where: "Element → Settings → Help & About → Advanced → Access Token",
+        what: "Bot access token — provisioned",
+        where: "pnpm --filter @theokit/gateway-e2e matrix:up",
       },
-      { name: "MATRIX_USER_ID", what: "Full mxid, `@bot:server`", where: "The bot's own user id" },
+      {
+        name: "MATRIX_USER_ID",
+        what: "Bot mxid — provisioned",
+        where: "pnpm --filter @theokit/gateway-e2e matrix:up",
+      },
     ],
     target: [
       {
         name: "MATRIX_TEST_ROOM_ID",
-        what: "Room id, `!abc:server`",
-        where: "Create a throwaway room, invite and JOIN the bot, then Room Settings → Advanced",
+        what: "Room id — provisioned",
+        where: "pnpm --filter @theokit/gateway-e2e matrix:up",
       },
     ],
+    caveat:
+      "The only platform here that needs NO credential from anyone: matrix.org answers registration " +
+      'with "Only m.login.application_service registrations are allowed", and the other public ' +
+      "homeservers have closed registration too, so the suite boots its own server in Docker. That is " +
+      "not a downgrade — Matrix is federated and most deployments are self-hosted, so a real " +
+      "homeserver IS the platform. It does NOT cover federation between servers, or matrix.org itself.",
   },
   {
     id: "mattermost",

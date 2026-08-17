@@ -112,6 +112,12 @@ jobs:
           SMS_FROM_NUMBER: ${{ secrets.SMS_FROM_NUMBER }}
           SMS_TEST_RECIPIENT: ${{ secrets.SMS_TEST_RECIPIENT }}
 
+      # Matrix needs no secret: it brings its own homeserver. matrix.org has
+      # closed registration, and a self-hosted server is the honest target for a
+      # federated protocol anyway. Booted here so the suite finds MATRIX_* set.
+      - name: Boot the Matrix homeserver
+        run: pnpm --filter @theokit/gateway-e2e matrix:up
+
       - name: Live suites
         run: |
           if [ -n "${{ inputs.platform }}" ]; then
@@ -171,3 +177,9 @@ jobs:
           SMS_AUTH_TOKEN: ${{ secrets.SMS_AUTH_TOKEN }}
           SMS_FROM_NUMBER: ${{ secrets.SMS_FROM_NUMBER }}
           SMS_TEST_RECIPIENT: ${{ secrets.SMS_TEST_RECIPIENT }}
+
+      # Always, even when the suites failed: a leftover container would make the
+      # next run reuse a volume whose bootstrap token was already consumed.
+      - name: Tear down the Matrix homeserver
+        if: always()
+        run: pnpm --filter @theokit/gateway-e2e matrix:down

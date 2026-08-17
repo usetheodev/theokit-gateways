@@ -10,6 +10,8 @@ function makeMockClient(): MatrixSdkClient & {
   sent: Array<{ roomId: string; text: string }>;
   listeners: Array<(e: MatrixEventLike, r: MatrixRoomLike) => void>;
   failNextSendWith?: { httpStatus?: number; errcode?: string; message?: string };
+  /** Drives the credential-validation path — see the connect() regression test. */
+  failWhoamiWith?: Error;
   encryptedRooms: Set<string>;
   resolved: Record<string, string>;
 } {
@@ -25,12 +27,18 @@ function makeMockClient(): MatrixSdkClient & {
     failNextSendWith: undefined as
       | { httpStatus?: number; errcode?: string; message?: string }
       | undefined,
+    failWhoamiWith: undefined as Error | undefined,
     on(_evt: "Room.timeline", l: (e: MatrixEventLike, r: MatrixRoomLike) => void) {
       listeners.push(l);
     },
     off(_evt: "Room.timeline", l: (e: MatrixEventLike, r: MatrixRoomLike) => void) {
       const idx = listeners.indexOf(l);
       if (idx >= 0) listeners.splice(idx, 1);
+    },
+    async whoami() {
+      const self = this as unknown as { failWhoamiWith?: Error };
+      if (self.failWhoamiWith !== undefined) throw self.failWhoamiWith;
+      return { user_id: "@bot:example.org" };
     },
     async startClient() {
       return undefined;
@@ -364,6 +372,34 @@ describe("MatrixAdapter inbound dispatch", () => {
 });
 
 describe("MatrixAdapter lifecycle", () => {
+  it("connect() reports failure when the server rejects the access token", async () => {
+    // Regression, found by the live suite against a real homeserver on
+    // 2026-08-17. `startClient` begins syncing ASYNCHRONOUSLY and resolves
+    // whether or not the token is valid — matrix-js-sdk logs the 401 as
+    // "continuing to initialise sync, this will be retried later" and carries
+    // on. So connect() answered `true` for a credential the server had already
+    // rejected, and the operator got a healthy-looking adapter that received
+    // nothing, forever.
+    //
+    // Every sibling adapter returns false here; Matrix was the one that did not.
+    // `whoami()` is the cheapest call that makes the server judge the token.
+    const client = makeMockClient();
+    client.failWhoamiWith = Object.assign(new Error("Invalid token"), {
+      errcode: "M_UNKNOWN_TOKEN",
+      httpStatus: 401,
+    });
+    const adapter = new MatrixAdapter({
+      homeserverUrl: "https://matrix.example.org",
+      accessToken: "invalid",
+      userId: "@bot:example.org",
+      __clientFactory: () => client,
+    });
+
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(await adapter.connect()).toBe(false);
+    stderr.mockRestore();
+  });
+
   it("disconnect is idempotent", async () => {
     const adapter = new MatrixAdapter({
       homeserverUrl: "https://matrix.org",

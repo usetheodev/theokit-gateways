@@ -21,7 +21,7 @@
  * `theokit-e2e` to find it all.
  */
 
-import { EmailAdapter } from "@theokit/gateway-email";
+import { EmailAdapter, type EmailMessageEvent } from "@theokit/gateway-email";
 import { expect, it } from "vitest";
 
 import { optional, required, runMarker } from "../../src/credentials.js";
@@ -162,7 +162,8 @@ describeLiveInbound(EMAIL, "inbound round trip", () => {
 
     try {
       adapter.onInbound(async (event) => {
-        seen.push(`${event.email?.subject ?? ""} ${event.text}`);
+        const email = event as EmailMessageEvent;
+        seen.push(`${email.email?.subject ?? ""} ${email.text}`);
       });
       await adapter.connect();
 

@@ -32,6 +32,9 @@ importers:
       '@theokit/gateway-email':
         specifier: workspace:*
         version: link:../packages/gateway-email
+      '@theokit/gateway-matrix':
+        specifier: workspace:*
+        version: link:../packages/gateway-matrix
       '@theokit/gateway-slack':
         specifier: workspace:*
         version: link:../packages/gateway-slack
@@ -41,6 +44,15 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.21
+      '@types/nodemailer':
+        specifier: ^6.4.0
+        version: 6.4.24
+      matrix-js-sdk:
+        specifier: ^37.0.0
+        version: 37.13.0
+      nodemailer:
+        specifier: ^8.0.0
+        version: 8.0.11
       telegram:
         specifier: ^2.26.22
         version: 2.26.22
@@ -879,6 +891,10 @@ packages:
   '@manypkg/get-packages@1.1.3':
     resolution: {integrity: sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A==}
 
+  '@matrix-org/matrix-sdk-crypto-wasm@15.3.0':
+    resolution: {integrity: sha512-QyxHvncvkl7nf+tnn92PjQ54gMNV8hMSpiukiDgNrqF6IYwgySTlcSdkPYdw8QjZJ0NR6fnVrNzMec0OohM3wA==}
+    engines: {node: '>= 18'}
+
   '@matrix-org/matrix-sdk-crypto-wasm@4.10.0':
     resolution: {integrity: sha512-zOqKVAYPfzs6Hav/Km9F5xWwoQ0bxDuoUU0/121m03Fg2VnfcHk43TjKImZolFc7IlgXwVGoda9Pp9Z/eTVKJA==}
     engines: {node: '>= 10'}
@@ -1325,6 +1341,9 @@ packages:
   '@types/node@22.19.21':
     resolution: {integrity: sha512-VMeFBSCKQKmm2swI2kW51SFusDqekC6q9trBCvJ/JliDchFSuoYYKN7yVNjPthP1HKZcx3U1gI/wTcEBjEFKTA==}
 
+  '@types/nodemailer@6.4.24':
+    resolution: {integrity: sha512-Ww4u0rT9wQNXh4JiQaIwx3QWdcOFXzOjQA2zc+jtFYNmQiT4mIUqcDin51bDFdkzKubFnQCZNK7FIHlPKQ/q9w==}
+
   '@types/nodemailer@8.0.1':
     resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
 
@@ -1666,6 +1685,9 @@ packages:
   base-x@4.0.1:
     resolution: {integrity: sha512-uAZ8x6r6S3aUM9rbHGVOIsR15U/ZSc82b3ymnCPsT45Gk1DDvhDPdIgB5MrhirZWt+5K0EEPQH985kNqZgNPFw==}
 
+  base-x@5.0.1:
+    resolution: {integrity: sha512-M7uio8Zt++eg3jPj+rHMfCC+IuygQHHCOU+IYsVtik6FWjuYpVt/+MRKcgsAMHh8mMFAwnB+Bs+mTrFiXjMzKg==}
+
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
@@ -1704,6 +1726,9 @@ packages:
 
   bs58@5.0.0:
     resolution: {integrity: sha512-r+ihvQJvahgYT50JD05dyJNKlmmSlMoOGwn1lCcEzanPglg7TxYjioQUYehQ9mAR/+hOSd2jRc/Z2y5UxBymvQ==}
+
+  bs58@6.0.0:
+    resolution: {integrity: sha512-PD0wEnEYg6ijszw/u8s+iI3H17cTymlrwkKhDhPZq+Sokl3AU4htyBFTjAeNAlCCmg0f53g6ih3jATyCKftTfw==}
 
   buffer-crc32@0.2.13:
     resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
@@ -2911,6 +2936,10 @@ packages:
     resolution: {integrity: sha512-mzWfF4rJaTFLDfkedqP2jh/i1v5pv6xRHPkAQLn1ytXi72TFKLlKQmjaNUXfQYkmriIYnGYYQwBXQeJgwaT8SQ==}
     engines: {node: '>=18.0.0'}
 
+  matrix-js-sdk@37.13.0:
+    resolution: {integrity: sha512-zlASOqgPNcE4o2C24HDvEyOwBjIo1U5xo9kWgr8Kvk6jkA22zGsMKv2Y4EoCZXPxyYdQMPnOy+cBJbUtZIz6JQ==}
+    engines: {node: '>=22.0.0'}
+
   matrix-widget-api@1.17.0:
     resolution: {integrity: sha512-5FHoo3iEP3Bdlv5jsYPWOqj+pGdFQNLWnJLiB0V7Ygne7bb+Gsj3ibyFyHWC6BVw+Z+tSW4ljHpO17I9TwStwQ==}
 
@@ -3887,6 +3916,10 @@ packages:
     resolution: {integrity: sha512-pMZTvIkT1d+TFGvDOqodOclx0QWkkgi6Tdoa8gC8ffGAAqz9pzPTZWAybbsHHoED/ztMtkv/VoYTYyShUn81hA==}
     engines: {node: '>= 0.4.0'}
 
+  uuid@11.1.1:
+    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
+    hasBin: true
+
   uuid@13.0.0:
     resolution: {integrity: sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w==}
     hasBin: true
@@ -4615,6 +4648,8 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
+  '@matrix-org/matrix-sdk-crypto-wasm@15.3.0': {}
+
   '@matrix-org/matrix-sdk-crypto-wasm@4.10.0': {}
 
   '@mattermost/client@9.11.0(@mattermost/types@9.3.0(typescript@5.9.3))(typescript@5.9.3)':
@@ -5031,6 +5066,10 @@ snapshots:
   '@types/node@22.19.21':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/nodemailer@6.4.24':
+    dependencies:
+      '@types/node': 22.19.21
 
   '@types/nodemailer@8.0.1':
     dependencies:
@@ -5483,6 +5522,8 @@ snapshots:
 
   base-x@4.0.1: {}
 
+  base-x@5.0.1: {}
+
   base64-js@1.5.1: {}
 
   basic-ftp@5.3.1: {}
@@ -5543,6 +5584,10 @@ snapshots:
   bs58@5.0.0:
     dependencies:
       base-x: 4.0.1
+
+  bs58@6.0.0:
+    dependencies:
+      base-x: 5.0.1
 
   buffer-crc32@0.2.13: {}
 
@@ -6991,6 +7036,23 @@ snapshots:
       unhomoglyph: 1.0.6
       uuid: 9.0.1
 
+  matrix-js-sdk@37.13.0:
+    dependencies:
+      '@babel/runtime': 7.29.7
+      '@matrix-org/matrix-sdk-crypto-wasm': 15.3.0
+      another-json: 0.2.0
+      bs58: 6.0.0
+      content-type: 1.0.5
+      jwt-decode: 4.0.0
+      loglevel: 1.9.2
+      matrix-events-sdk: 0.0.1
+      matrix-widget-api: 1.17.0
+      oidc-client-ts: 3.5.0
+      p-retry: 4.6.2
+      sdp-transform: 2.15.0
+      unhomoglyph: 1.0.6
+      uuid: 11.1.1
+
   matrix-widget-api@1.17.0:
     dependencies:
       '@types/events': 3.0.3
@@ -8165,6 +8227,8 @@ snapshots:
     optional: true
 
   utils-merge@1.0.1: {}
+
+  uuid@11.1.1: {}
 
   uuid@13.0.0: {}
 
