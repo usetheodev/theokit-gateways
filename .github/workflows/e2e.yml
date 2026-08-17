@@ -91,6 +91,11 @@ jobs:
           EMAIL_IMAP_HOST: ${{ secrets.EMAIL_IMAP_HOST }}
           EMAIL_SMTP_HOST: ${{ secrets.EMAIL_SMTP_HOST }}
           EMAIL_TEST_RECIPIENT: ${{ secrets.EMAIL_TEST_RECIPIENT }}
+          # A SECOND mailbox. The adapter drops own-address mail (EC-1), so the
+          # inbound probe cannot come from the address under test.
+          EMAIL_TEST_SENDER_ADDRESS: ${{ secrets.EMAIL_TEST_SENDER_ADDRESS }}
+          EMAIL_TEST_SENDER_PASSWORD: ${{ secrets.EMAIL_TEST_SENDER_PASSWORD }}
+          EMAIL_TEST_SENDER_SMTP_HOST: ${{ secrets.EMAIL_TEST_SENDER_SMTP_HOST }}
           LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_TEST_USER_ID: ${{ secrets.LINE_TEST_USER_ID }}
@@ -146,6 +151,11 @@ jobs:
           EMAIL_IMAP_HOST: ${{ secrets.EMAIL_IMAP_HOST }}
           EMAIL_SMTP_HOST: ${{ secrets.EMAIL_SMTP_HOST }}
           EMAIL_TEST_RECIPIENT: ${{ secrets.EMAIL_TEST_RECIPIENT }}
+          # A SECOND mailbox. The adapter drops own-address mail (EC-1), so the
+          # inbound probe cannot come from the address under test.
+          EMAIL_TEST_SENDER_ADDRESS: ${{ secrets.EMAIL_TEST_SENDER_ADDRESS }}
+          EMAIL_TEST_SENDER_PASSWORD: ${{ secrets.EMAIL_TEST_SENDER_PASSWORD }}
+          EMAIL_TEST_SENDER_SMTP_HOST: ${{ secrets.EMAIL_TEST_SENDER_SMTP_HOST }}
           LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_TEST_USER_ID: ${{ secrets.LINE_TEST_USER_ID }}

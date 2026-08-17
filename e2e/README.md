@@ -110,6 +110,13 @@ version of this package got that wrong.
 The session string is **full access to that account**, not a scoped token. Use a
 throwaway account, and treat the value like a password.
 
+**Decided 2026-08-17: Telegram inbound stays uncovered.** A session string in CI
+means anyone with repository access has the account behind it. Against that, the
+assertion it buys is one inbound message on a platform whose authentication and
+outbound are already verified. The gap is the cheaper side of that trade, so the
+suite skips with a comment saying it is a decision rather than an oversight.
+Revisit it with a throwaway account, never a personal one.
+
 ---
 
 ## Layout

@@ -202,7 +202,11 @@ export const PLATFORMS: readonly PlatformSpec[] = [
         where: "Use the bot's OWN address so the round trip needs one mailbox, not two",
       },
     ],
-    caveat: "Delivery is not instant. Inbound assertions poll with a generous timeout.",
+    caveat:
+      "Delivery is not instant; inbound assertions poll with a generous timeout. The inbound " +
+      "round trip also needs EMAIL_TEST_SENDER_ADDRESS/PASSWORD — a SECOND mailbox — because the " +
+      "adapter drops own-address mail before anything else (EC-1), without which a bot replying " +
+      "to its own mail loops forever by email, and that loop outlives the process.",
   },
   {
     id: "line",

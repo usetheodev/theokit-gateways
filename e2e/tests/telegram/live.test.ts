@@ -142,9 +142,16 @@ describeLiveInbound(TELEGRAM, "inbound round trip", () => {
     // session:telegram`. After that one login there is no human in the loop.
     const session = optional("TELEGRAM_TEST_SESSION");
     if (session === undefined) {
-      // Reported rather than silently green: this suite has no coverage without it.
+      // DELIBERATELY UNSET, decided 2026-08-17 — not a task nobody got to.
+      //
+      // An MTProto session string is full access to the account it belongs to,
+      // not a scoped token, so putting one in CI means anyone with repository
+      // access has the account. Weighed against what it buys — one inbound
+      // assertion on a platform whose auth and outbound are already covered —
+      // the owner chose the gap. Set TELEGRAM_TEST_SESSION on a THROWAWAY
+      // account (see e2e/README.md) if that trade ever changes.
       expect
-        .soft(session, "mint TELEGRAM_TEST_SESSION — see e2e/README.md § inbound")
+        .soft(session, "Telegram inbound is intentionally uncovered — see the comment above")
         .toBeUndefined();
       return;
     }
