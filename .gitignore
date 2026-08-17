@@ -8,3 +8,11 @@ coverage/
 # Claude Code cycle tooling + audit artifacts (not shipped source)
 .claude/
 architect-output/
+
+# Filled-in environment files. `examples/slack-bot/.env` was committed with real
+# Slack and OpenRouter credentials because nothing here matched it — the example
+# directory was imported wholesale from another checkout. The `.env.example`
+# alongside it is the file that documents the variables, so it stays tracked.
+.env
+.env.*
+!.env.example
