@@ -148,8 +148,27 @@ export class DiscordAdapter extends BasePlatformAdapter {
   private async handleInbound(msg: Message): Promise<void> {
     if (this.handler === undefined) return;
     if (msg.author.bot) return;
-    const event = normalizeEvent(msg);
+    await this.dispatchEvent(normalizeEvent(msg));
+  }
+
+  /**
+   * Dispatch a pre-built event to the current handler, honouring EC-H replace
+   * semantics.
+   *
+   * Mirrors the seam `gateway-sms` already exposes. It exists because the EC-H
+   * contract had no honest test without it: a real `discord.js` Message cannot
+   * be synthesized, `handler` is private, and the test that claimed to cover
+   * replacement asserted two counters were 0 — true whether onInbound replaces,
+   * stacks, or discards. If it had regressed to `handlers.push(handler)`, the
+   * agent would have replied twice to every message, double-billing tokens,
+   * with the suite green.
+   *
+   * @internal
+   */
+  async dispatchEvent(event: GatewayMessageEvent): Promise<"ok" | "no_handler"> {
+    if (this.handler === undefined) return "no_handler";
     await this.handler(event);
+    return "ok";
   }
 }
 

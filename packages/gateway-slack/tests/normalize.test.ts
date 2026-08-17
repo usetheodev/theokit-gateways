@@ -20,6 +20,85 @@ function mkBody(
   };
 }
 
+describe("normalizeSlackEvent — receivedAt", () => {
+  /**
+   * `receivedAt: Math.floor(Number(e.ts) * 1000)` is the only field this
+   * normalizer COMPUTES — every other one is a passthrough, and every other one
+   * is asserted. This had no assertion anywhere in the repository: a grep for
+   * `receivedAt` across `packages/*​/tests` returned no Slack hit at all, and
+   * the fixture's `ts: "100.1"` appeared only as a substring of an event id.
+   *
+   * Drop the `* 1000` and `receivedAt` becomes a 1970 timestamp, silently
+   * breaking every freshness and ordering consumer downstream, with the suite
+   * green.
+   */
+  it("converts Slack's float seconds into epoch milliseconds", () => {
+    const r = normalizeSlackEvent(
+      mkBody({
+        channel: "D1",
+        ts: "1700000000.000100",
+        user: "U1",
+        text: "hi",
+        channel_type: "im",
+      }),
+      BOT,
+      { requireMention: false },
+    );
+    expect(r?.receivedAt).toBe(1_700_000_000_000);
+  });
+
+  it("keeps millisecond precision rather than truncating to the second", () => {
+    // Slack's ts carries microseconds. Rounding to whole seconds would collapse
+    // the ordering of messages sent inside the same second.
+    const r = normalizeSlackEvent(
+      mkBody({
+        channel: "D1",
+        ts: "1700000000.250000",
+        user: "U1",
+        text: "hi",
+        channel_type: "im",
+      }),
+      BOT,
+      { requireMention: false },
+    );
+    expect(r?.receivedAt).toBe(1_700_000_000_250);
+  });
+
+  it("produces a plausible epoch-millisecond value, not seconds", () => {
+    // The regression this guards is off by a factor of 1000, which is easy to
+    // miss when reading a bare number. 1e12 is the floor for any date after 2001.
+    const r = normalizeSlackEvent(
+      mkBody({
+        channel: "D1",
+        ts: "1700000000.000000",
+        user: "U1",
+        text: "hi",
+        channel_type: "im",
+      }),
+      BOT,
+      { requireMention: false },
+    );
+    expect(r?.receivedAt).toBeGreaterThan(1_000_000_000_000);
+  });
+
+  it("preserves the raw ts alongside the converted value", () => {
+    const r = normalizeSlackEvent(
+      mkBody({
+        channel: "D1",
+        ts: "1700000000.000100",
+        user: "U1",
+        text: "hi",
+        channel_type: "im",
+      }),
+      BOT,
+      { requireMention: false },
+    );
+    // Consumers that need Slack's own identifier (thread replies, reactions)
+    // depend on the untouched string.
+    expect(r?.slack.ts).toBe("1700000000.000100");
+  });
+});
+
 describe("normalizeSlackEvent — channel types (D270, D271)", () => {
   it("DM → channel.type = dm", () => {
     const r = normalizeSlackEvent(
