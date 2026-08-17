@@ -179,6 +179,53 @@ describe("TeamsAdapter — onInbound + dispatch", () => {
     expect(h2).toHaveBeenCalledTimes(1);
   });
 
+  it("a stale unsubscribe does not clear the handler that replaced it", async () => {
+    // onInbound(A) -> onInbound(B) -> A's unsubscribe. Without an identity guard
+    // A's closure cleared B and inbound delivery stopped permanently, with
+    // nothing logged. Teams and email were the only two adapters of ten missing
+    // the guard, and no test anywhere ran this order.
+    const { adapter, fakeApp } = makeAdapter();
+    await adapter.connect();
+    const h1 = vi.fn(async () => {});
+    const h2 = vi.fn(async () => {});
+    const offFirst = adapter.onInbound(h1);
+    adapter.onInbound(h2);
+
+    offFirst(); // stale: belongs to a handler that is no longer installed
+
+    await fakeApp._emit("activity", {
+      activity: {
+        type: "message",
+        id: "act-stale",
+        text: "hi",
+        conversation: { id: "conv-stale", conversationType: "personal" },
+        from: { id: "u1" },
+      },
+    });
+    expect(h1).not.toHaveBeenCalled();
+    expect(h2).toHaveBeenCalledTimes(1);
+  });
+
+  it("its own unsubscribe still clears the current handler", async () => {
+    // Guards the guard: an identity check that never matches would silently
+    // disable unsubscribe altogether.
+    const { adapter, fakeApp } = makeAdapter();
+    await adapter.connect();
+    const h = vi.fn(async () => {});
+    const off = adapter.onInbound(h);
+    off();
+    await fakeApp._emit("activity", {
+      activity: {
+        type: "message",
+        id: "act-off",
+        text: "hi",
+        conversation: { id: "conv-off", conversationType: "personal" },
+        from: { id: "u1" },
+      },
+    });
+    expect(h).not.toHaveBeenCalled();
+  });
+
   it("filters non-message activities (typing, conversationUpdate)", async () => {
     const { adapter, fakeApp } = makeAdapter();
     await adapter.connect();

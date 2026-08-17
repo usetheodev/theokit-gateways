@@ -68,6 +68,31 @@ export function digitsOnly(s: string): string {
 }
 
 /**
+ * Characters that may appear INSIDE a written phone number: digits and the
+ * separators people type around them. Anything else — a letter, a comma, a
+ * newline — ends the run.
+ */
+const PHONE_RUN = /[\d][\d+\-().  ]*[\d]|[\d]/g;
+
+/**
+ * EC-7: the phone-like runs in a message, each normalized to digits.
+ *
+ * The filter used to normalize the WHOLE message and ask whether the result
+ * contained the bot's number. That accepts the four documented formats, but it
+ * also concatenates digits from unrelated words: with a bot at 5511999999999,
+ * `"pedido 55 chegou 11, ref 99999-9999 ok"` normalized to a string containing
+ * exactly that number, and the bot answered a message about an order. Every
+ * group message carrying scattered digits woke it.
+ *
+ * Scanning runs instead keeps the separators irrelevant WITHIN a number — which
+ * is what EC-7 asks for, and what `"+55 (11) 99999-9999"` needs — while letting
+ * a letter or a comma do what it visually does: end the number.
+ */
+export function phoneRuns(s: string): string[] {
+  return (s.match(PHONE_RUN) ?? []).map(digitsOnly).filter((d) => d.length > 0);
+}
+
+/**
  * Adapter facade. Implements `BasePlatformAdapter` (D172).
  *
  * Use `WhatsAppAdapter.fromCloud(config)` or `WhatsAppAdapter.fromWeb(config)`
@@ -78,6 +103,8 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   private readonly backendImpl: WhatsAppBackend;
   private readonly requireMention: boolean;
   private readonly botPhoneId: string;
+  /** Mirrors the sibling adapters: guards connect() against opening a second session. */
+  private connected = false;
   private handler?: (event: GatewayMessageEvent) => Promise<void>;
   private statusHandler?: (receipt: WhatsAppStatusReceipt) => Promise<void>;
   // EC-H: track unsubscribe handles so onInbound REPLACES instead of stacks.
@@ -101,10 +128,18 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   }
 
   async connect(): Promise<boolean> {
-    return this.backendImpl.connect();
+    // Guard added 2026-08-17: this was the only adapter without one, so a second
+    // connect() opened a second live WhatsApp session. Teams, SMS and Slack all
+    // short-circuit here. Note it latches on SUCCESS only — a refused connect
+    // must stay retryable, or one network blip becomes permanent.
+    if (this.connected) return true;
+    const ok = await this.backendImpl.connect();
+    this.connected = ok;
+    return ok;
   }
 
   async disconnect(): Promise<void> {
+    this.connected = false;
     this.inboundUnsubscribe?.();
     this.inboundUnsubscribe = undefined;
     this.statusUnsubscribe?.();
@@ -145,8 +180,7 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   private shouldDropGroupMessage(inbound: WhatsAppInboundEvent): boolean {
     if (inbound.conversationType !== "group" || !this.requireMention) return false;
     if (this.botPhoneId.length === 0) return true; // misconfigured — drop silently
-    const textDigits = digitsOnly(inbound.text);
-    return !textDigits.includes(this.botPhoneId);
+    return !phoneRuns(inbound.text).some((run) => run.includes(this.botPhoneId));
   }
 
   private toMessageEvent(inbound: WhatsAppInboundEvent): WhatsAppMessageEvent {

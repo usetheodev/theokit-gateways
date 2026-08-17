@@ -193,8 +193,12 @@ export class TeamsAdapter extends BasePlatformAdapter {
   onInbound(handler: (event: GatewayMessageEvent) => Promise<void>): () => void {
     // EC-H: replace any previous subscription.
     this.handler = handler;
+    // The guard is not decoration. Without it, onInbound(A) -> onInbound(B) ->
+    // A's stale unsubscribe clears B, and inbound delivery stops permanently
+    // with nothing logged. Email and Teams were the only two adapters of ten
+    // missing it, and no test anywhere exercised the A->B->unsubA sequence.
     return () => {
-      this.handler = undefined;
+      if (this.handler === handler) this.handler = undefined;
     };
   }
 
