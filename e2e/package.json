@@ -11,12 +11,15 @@
     "readiness": "vitest run tests/readiness.test.ts",
     "typecheck": "tsc --noEmit",
     "env:example": "tsx scripts/env-example.ts",
-    "discover:telegram": "tsx scripts/discover-telegram.ts"
+    "discover:telegram": "tsx scripts/discover-telegram.ts",
+    "session:telegram": "tsx scripts/mint-telegram-session.ts",
+    "bootstrap:telegram": "tsx scripts/bootstrap-telegram.ts"
   },
   "devDependencies": {
     "@theokit/gateway": "workspace:*",
     "@theokit/gateway-telegram": "workspace:*",
     "@types/node": "^22.10.0",
+    "telegram": "^2.26.22",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^4.0.0"

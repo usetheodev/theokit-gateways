@@ -121,24 +121,42 @@ describeLive(TELEGRAM, "outbound", () => {
 });
 
 describeLiveInbound(TELEGRAM, "inbound round trip", () => {
-  it("receives a message posted into the test chat", async () => {
-    // Telegram is connection-based: the bot long-polls, so this round trip runs
-    // anywhere, including CI, with no public URL.
+  it("receives a message a real user posted into the test chat", async () => {
+    // Telegram is connection-based: the bot long-polls, so this round trip needs
+    // no public URL and runs unattended in CI.
     //
-    // It needs a SECOND identity to post — a bot cannot see its own messages,
-    // and Telegram does not deliver bot messages to other bots (EC-K drops them
-    // regardless). Without TELEGRAM_TEST_SENDER_TOKEN there is nothing to
-    // receive, so the test says so instead of asserting nothing.
-    const senderToken = optional("TELEGRAM_TEST_SENDER_TOKEN");
-    if (senderToken === undefined) {
-      expect.soft(senderToken, "set TELEGRAM_TEST_SENDER_TOKEN to a second bot").toBeUndefined();
+    // The sender has to be a USER, not a second bot. Telegram's Bot FAQ:
+    // "bots will not be able to see messages from other bots regardless of
+    // mode". A second bot token would post successfully and the gateway would
+    // never see it, so that suite could not pass however long it waited — the
+    // first version of this file got that wrong.
+    //
+    // `TELEGRAM_TEST_SESSION` is an MTProto session string for a throwaway user
+    // account, minted once by `pnpm --filter @theokit/gateway-e2e
+    // session:telegram`. After that one login there is no human in the loop.
+    const session = optional("TELEGRAM_TEST_SESSION");
+    if (session === undefined) {
+      // Reported rather than silently green: this suite has no coverage without it.
+      expect
+        .soft(session, "mint TELEGRAM_TEST_SESSION — see e2e/README.md § inbound")
+        .toBeUndefined();
       return;
     }
+
+    const { TelegramClient } = await import("telegram");
+    const { StringSession } = await import("telegram/sessions/index.js");
 
     const adapter = new TelegramAdapter({ token: required("TELEGRAM_BOT_TOKEN") });
     const chatId = required("TELEGRAM_TEST_CHAT_ID");
     const marker = runMarker();
     const seen: string[] = [];
+
+    const user = new TelegramClient(
+      new StringSession(session),
+      Number(required("TELEGRAM_API_ID")),
+      required("TELEGRAM_API_HASH"),
+      { connectionRetries: 3 },
+    );
 
     try {
       adapter.onInbound(async (event) => {
@@ -146,19 +164,16 @@ describeLiveInbound(TELEGRAM, "inbound round trip", () => {
       });
       await adapter.connect();
 
-      const res = await fetch(`https://api.telegram.org/bot${senderToken}/sendMessage`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: `${marker} inbound probe` }),
-      });
-      expect(res.ok).toBe(true);
+      await user.connect();
+      await user.sendMessage(chatId, { message: `${marker} inbound probe` });
 
       await waitFor(() => seen.find((t) => t.includes(marker)), {
         timeoutMs: 30_000,
         label: `an inbound message containing ${marker}`,
       });
     } finally {
+      await user.disconnect();
       await adapter.disconnect();
     }
-  }, 60_000);
+  }, 90_000);
 });

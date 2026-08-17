@@ -50,10 +50,26 @@ for (const spec of PLATFORMS) {
   lines.push("");
 }
 
-lines.push("# Optional — a second Telegram bot, so the inbound round trip has a sender.");
-lines.push("# A bot cannot see its own messages, and EC-K drops messages from other bots,");
-lines.push("# so without this the inbound suite has nothing to receive.");
-lines.push("TELEGRAM_TEST_SENDER_TOKEN=");
+lines.push(`# ${"=".repeat(72)}`);
+lines.push("# Unattended inbound for Telegram (optional, but it is what removes the human)");
+lines.push(`# ${"=".repeat(72)}`);
+lines.push("#");
+lines.push("# Telegram's Bot FAQ: \"bots will not be able to see messages from other bots");
+lines.push('# regardless of mode". So the inbound sender cannot be a second bot — it has to');
+lines.push("# be a USER account, driven over MTProto.");
+lines.push("#");
+lines.push("# Minting the session is the ONE step that needs a person, exactly once:");
+lines.push("#   pnpm --filter @theokit/gateway-e2e session:telegram");
+lines.push("# After that, bootstrap:telegram creates the test group, adds the bot and writes");
+lines.push("# TELEGRAM_TEST_CHAT_ID here by itself.");
+lines.push("#");
+lines.push("# Application id/hash — identify the APP, not the account.");
+lines.push("#   where: my.telegram.org → API development tools");
+lines.push("TELEGRAM_API_ID=");
+lines.push("TELEGRAM_API_HASH=");
+lines.push("# Session string for a THROWAWAY user account.");
+lines.push("# This is full access to that account, not a scoped token. Treat it as a password.");
+lines.push("TELEGRAM_TEST_SESSION=");
 lines.push("");
 lines.push("# Optional — public HTTPS URL reaching this process (ngrok, cloudflared).");
 lines.push("# Unlocks the inbound suites for the webhook platforms.");

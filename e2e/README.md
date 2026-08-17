@@ -72,6 +72,46 @@ URL in the provider console.
 
 ---
 
+## Running with nobody watching
+
+Per run: **zero human action**, for every platform. That is the target and it is
+reachable.
+
+One-time provisioning: **unavoidable**, and it is the same cost as creating the
+token in the first place. Nobody can automate "prove you own this phone number"
+away — that is what the check is for.
+
+The interesting case is Telegram inbound, because two platform rules bite at
+once:
+
+- A bot cannot enumerate its chats. There is no API for it.
+- A bot cannot speak into a chat that has not spoken to it first. Both rules
+  exist to stop bots cold-messaging people, and neither has a workaround.
+
+So the chat id cannot come from the bot token. What CAN be changed is the
+identity doing the asking:
+
+```bash
+pnpm --filter @theokit/gateway-e2e session:telegram      # once, needs a phone code
+pnpm --filter @theokit/gateway-e2e bootstrap:telegram    # unattended from here on
+```
+
+`session:telegram` mints an MTProto session string for a throwaway USER account.
+`bootstrap:telegram` then uses it to create the test group, add the bot, post the
+first message, and write `TELEGRAM_TEST_CHAT_ID` into `.env` — no console, no
+tapping, no group made by hand.
+
+A user account is required and a second bot will not do. Telegram's Bot FAQ:
+*"bots will not be able to see messages from other bots regardless of mode."* A
+second bot would post successfully and the gateway would never see it, so an
+inbound suite driven that way cannot pass however long it waits. The first
+version of this package got that wrong.
+
+The session string is **full access to that account**, not a scoped token. Use a
+throwaway account, and treat the value like a password.
+
+---
+
 ## Layout
 
 ```
