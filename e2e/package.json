@@ -15,13 +15,17 @@
     "session:telegram": "tsx scripts/mint-telegram-session.ts",
     "bootstrap:telegram": "tsx scripts/bootstrap-telegram.ts",
     "matrix:up": "tsx scripts/bootstrap-matrix.ts",
-    "matrix:down": "docker compose -f docker/matrix/docker-compose.yml down -v"
+    "matrix:down": "tsx scripts/teardown-docker.ts matrix",
+    "mattermost:up": "tsx scripts/bootstrap-mattermost.ts",
+    "mattermost:down": "tsx scripts/teardown-docker.ts mattermost"
   },
   "devDependencies": {
+    "@mattermost/client": "^10.0.0",
     "@theokit/gateway": "workspace:*",
     "@theokit/gateway-discord": "workspace:*",
     "@theokit/gateway-email": "workspace:*",
     "@theokit/gateway-matrix": "workspace:*",
+    "@theokit/gateway-mattermost": "workspace:*",
     "@theokit/gateway-slack": "workspace:*",
     "@theokit/gateway-telegram": "workspace:*",
     "@types/node": "^22.10.0",
@@ -31,6 +35,7 @@
     "telegram": "^2.26.22",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "ws": "^8.18.0"
   }
 }

@@ -173,22 +173,27 @@ export const PLATFORMS: readonly PlatformSpec[] = [
     credentials: [
       {
         name: "MATTERMOST_BASE_URL",
-        what: "Server base URL",
-        where: "Your Mattermost instance, e.g. https://mm.example.com",
+        what: "Server base URL — provisioned, not created by hand",
+        where: "pnpm --filter @theokit/gateway-e2e mattermost:up",
       },
       {
         name: "MATTERMOST_ACCESS_TOKEN",
-        what: "Personal access token for the bot account",
-        where: "Profile → Security → Personal Access Tokens (admin must enable them first)",
+        what: "Bot personal access token — provisioned",
+        where: "pnpm --filter @theokit/gateway-e2e mattermost:up",
       },
     ],
     target: [
       {
         name: "MATTERMOST_TEST_CHANNEL_ID",
-        what: "Channel id",
-        where: "Create a throwaway channel, add the bot, then View Info → channel id",
+        what: "Channel id — provisioned",
+        where: "pnpm --filter @theokit/gateway-e2e mattermost:up",
       },
     ],
+    caveat:
+      "Self-hosted software, so the suite boots its own server and needs no credential from anyone: " +
+      "the first account created through the API on an empty instance becomes system admin, which is " +
+      "what lets the whole fixture be built with no console. It does NOT cover Mattermost Cloud, whose " +
+      "permission defaults may differ.",
   },
   {
     id: "email",

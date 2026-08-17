@@ -118,6 +118,11 @@ jobs:
       - name: Boot the Matrix homeserver
         run: pnpm --filter @theokit/gateway-e2e matrix:up
 
+      # Same reasoning as Matrix: self-hosted software, so the server IS the
+      # platform and no credential is involved. Slower to boot, hence its own step.
+      - name: Boot the Mattermost server
+        run: pnpm --filter @theokit/gateway-e2e mattermost:up
+
       - name: Live suites
         run: |
           if [ -n "${{ inputs.platform }}" ]; then
@@ -183,3 +188,7 @@ jobs:
       - name: Tear down the Matrix homeserver
         if: always()
         run: pnpm --filter @theokit/gateway-e2e matrix:down
+
+      - name: Tear down the Mattermost server
+        if: always()
+        run: pnpm --filter @theokit/gateway-e2e mattermost:down
