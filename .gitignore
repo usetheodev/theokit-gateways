@@ -16,3 +16,10 @@ architect-output/
 .env
 .env.*
 !.env.example
+
+# SDK runtime state, written by the agent as it runs: agent registry, message
+# transcripts, memory sessions. Same wholesale-import as the `.env` above left
+# `examples/slack-bot/.theokit/` tracked, and its registry.json carried the
+# absolute path of a developer's home directory into a public repository.
+# Runtime state is per-machine — it never belongs in version control.
+.theokit/

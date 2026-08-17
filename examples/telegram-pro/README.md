@@ -2,7 +2,7 @@
 
 A real, deployable Telegram bot built on `@theokit/sdk` v1. **~900 LoC, ~95% SDK surface coverage.**
 
-This example reproduces the five highest-value patterns from OpenClaw's 187-file `extensions/telegram` AND exercises the SDK's full feature set in one process: persistence, memory, hooks, sandbox, MCP, cron, providers, skills, context, plugins.
+It implements the five patterns that separate a usable Telegram bot from a toy — voice, vision, inline buttons, group gating, forum topics — AND exercises the SDK's full feature set in one process: persistence, memory, hooks, sandbox, MCP, cron, providers, skills, context, plugins.
 
 ---
 
@@ -47,15 +47,17 @@ This example reproduces the five highest-value patterns from OpenClaw's 187-file
 | OAuth MCP PKCE | `/notion` | `NOTION_OAUTH_CLIENT_ID` + one-time `pnpm exec theokit-mcp-auth-notion --setup` outside the bot |
 | Incremental streaming UX | `/stream on\|off` | optional: `STREAM_MODE=stream` env for default |
 
-### Telegram patterns (OpenClaw-inspired)
+### Telegram-specific patterns
 
-| Pattern | OpenClaw source | Code here |
+The five behaviours a Telegram bot needs before it is pleasant to live with.
+
+| Pattern | What it solves | Code here |
 |---|---|---|
-| Voice transcription (Whisper) | `bot-message-context.audio-transcript.test-support.ts` | [`transcribe.ts`](./src/transcribe.ts) |
-| Photo/sticker vision + cache | `sticker-vision.runtime.ts` + `sticker-cache.ts` | [`vision.ts`](./src/vision.ts) |
-| Inline buttons + callback routing | `inline-keyboard.ts` + `approval-callback-data.ts` | [`buttons.ts`](./src/buttons.ts) |
-| Group `@mention` gating | `group-policy.ts` | [`group-policy.ts`](./src/group-policy.ts) |
-| Forum topic scoping | `topic-conversation.ts` | [`agent.ts`](./src/agent.ts) |
+| Voice transcription (Whisper) | Voice notes are the default input on mobile; without transcription the bot is deaf to them. | [`transcribe.ts`](./src/transcribe.ts) |
+| Photo/sticker vision + cache | Images and stickers carry the message. The cache keeps a re-sent sticker from paying for vision twice. | [`vision.ts`](./src/vision.ts) |
+| Inline buttons + callback routing | Turns a free-text choice into one tap, and routes the `callback_query` back to the right handler. | [`buttons.ts`](./src/buttons.ts) |
+| Group `@mention` gating | Without it, a bot in a group answers everything and becomes a noisemaker. | [`group-policy.ts`](../../packages/gateway-telegram/src/group-policy.ts) |
+| Forum topic scoping | Each forum thread gets its own agent and session, so topics don't bleed into each other. | [`agent.ts`](./src/agent.ts) |
 
 ---
 

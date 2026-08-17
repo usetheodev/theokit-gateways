@@ -1,7 +1,6 @@
 /**
  * Telegram's 4096-char per-message cap. Split agent responses on safe
- * boundaries before sending (T5.1, ported from examples/telegram-pro
- * with EC-J markdown-pair preservation).
+ * boundaries before sending (T5.1, with EC-J markdown-pair preservation).
  */
 
 const TELEGRAM_MAX_MESSAGE = 4096;

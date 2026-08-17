@@ -40,7 +40,7 @@ import { registerCommands } from "./commands.js";
 /**
  * Theo Pro — multimodal Telegram bot built on @theokit/sdk 1.0.0.
  *
- * Reproduces the 5 highest-value patterns from OpenClaw's `extensions/telegram`:
+ * Implements the 5 patterns a Telegram bot needs to be usable:
  *   1. Voice transcription   (text/audio → Whisper → agent)
  *   2. Sticker/photo vision  (image → Gemini multimodal → agent)
  *   3. Inline buttons        (agent emits [BUTTONS: A | B] → keyboard)

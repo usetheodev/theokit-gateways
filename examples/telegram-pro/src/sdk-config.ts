@@ -70,7 +70,8 @@ export function buildProviderRouting(): ProviderRoutingSettings | undefined {
  *
  *  - `tavily` (opt-in via TAVILY_API_KEY): `tavily-mcp` — the official Tavily
  *    web-search server. Surfaces tavily-search, tavily-extract, tavily-crawl,
- *    tavily-map. The same provider OpenClaw and Mastra wire as their default.
+ *    tavily-map. Search results come back as text, so no vision model is needed
+ *    to consume them.
  *
  * Set `TELEGRAM_PRO_DISABLE_MCP_FS=1` in .env to skip filesystem MCP.
  */
