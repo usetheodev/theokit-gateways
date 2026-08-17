@@ -26,6 +26,9 @@ importers:
       '@theokit/gateway':
         specifier: workspace:*
         version: link:../packages/gateway
+      '@theokit/gateway-discord':
+        specifier: workspace:*
+        version: link:../packages/gateway-discord
       '@theokit/gateway-slack':
         specifier: workspace:*
         version: link:../packages/gateway-slack

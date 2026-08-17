@@ -70,6 +70,9 @@ jobs:
           TELEGRAM_TEST_SESSION: ${{ secrets.TELEGRAM_TEST_SESSION }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID }}
+          # A SECOND bot in the same server. normalizeEvent drops messages
+          # authored by a bot, so the probe cannot come from the bot under test.
+          DISCORD_TEST_SENDER_TOKEN: ${{ secrets.DISCORD_TEST_SENDER_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
           SLACK_TEST_CHANNEL_ID: ${{ secrets.SLACK_TEST_CHANNEL_ID }}
@@ -122,6 +125,9 @@ jobs:
           TELEGRAM_TEST_SESSION: ${{ secrets.TELEGRAM_TEST_SESSION }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID }}
+          # A SECOND bot in the same server. normalizeEvent drops messages
+          # authored by a bot, so the probe cannot come from the bot under test.
+          DISCORD_TEST_SENDER_TOKEN: ${{ secrets.DISCORD_TEST_SENDER_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
           SLACK_TEST_CHANNEL_ID: ${{ secrets.SLACK_TEST_CHANNEL_ID }}
