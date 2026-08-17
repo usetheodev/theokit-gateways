@@ -2,8 +2,9 @@
  * Tests for DiscordAdapter (T6.1, EC-C default intents).
  *
  * Unit tests cover the bits that don't require a real Discord API
- * connection. Integration coverage comes from examples/gateway-discord
- * (manual probe).
+ * connection. There is currently NO integration coverage: the manual probe
+ * this comment used to point at lived under `examples/`, which was removed on
+ * 2026-08-17, and it pointed at a path that had already stopped existing.
  */
 
 import { GatewayIntentBits } from "discord.js";

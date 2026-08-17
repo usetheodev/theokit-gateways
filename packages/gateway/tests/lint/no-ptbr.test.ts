@@ -73,21 +73,14 @@ const FILE_ALLOWLIST = new Set<string>([
   // gate exists to serve rather than to override. New entries are written in English; the gate
   // cannot tell a released entry from a fresh one, so the file is exempt and the rule carries it.
   "CHANGELOG.md",
-  // B-065 — the telegram-pro example's system prompt. Its Portuguese lines are FEW-SHOT EXAMPLES
-  // teaching the model to answer a Brazilian user in their own language: the Portuguese IS the
-  // behaviour being demonstrated, not prose someone forgot to translate. Translating them would
-  // change what the example does.
-  "examples/telegram-pro/src/system-prompt.ts",
-  // Same file category: a comment quoting "Sao_Paulo" to show an underscore that breaks Markdown V1.
-  "examples/telegram-pro/src/commands.ts",
-  // A recall probe whose assertion is what a model ANSWERS. It matches both spellings of a Brazilian
-  // city because a model replying in Portuguese uses the accented one; dropping that alternative to
-  // satisfy this gate would narrow what the probe accepts and weaken the audit it exists to run.
-  // Same category as the skipped session transcripts: linting the user's own words, not our prose.
-  // The `docs/course/theokit-agent-ai-course.md` exemption was removed on 2026-08-06, on the
-  // condition its own comment set: "delete this entry the day the course becomes English". The
-  // course was decomposed into the `wiki/` bundle in English, so the gate now covers every word
-  // that replaced it and there is no exempt prose left in the repository.
+  // The two `examples/telegram-pro/src/*` exemptions were removed on 2026-08-17 with the
+  // `examples/` tree itself. They covered Portuguese that WAS the demonstrated behaviour —
+  // few-shot lines teaching the model to answer a Brazilian user in their own language, and a
+  // comment quoting "Sao_Paulo" to show an underscore that breaks Markdown V1. Nothing they
+  // exempted still exists, and an allowlist entry pointing at a deleted path is a hole the gate
+  // cannot see through: it would silently re-exempt that path the day someone recreated it.
+  // The `docs/course/theokit-agent-ai-course.md` exemption was removed on 2026-08-06 on the same
+  // principle. There is no exempt prose left in the repository.
 ]);
 
 /**
