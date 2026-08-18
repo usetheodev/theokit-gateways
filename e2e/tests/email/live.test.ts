@@ -15,24 +15,26 @@
  * It is also the slowest platform here — delivery is not instant, so the inbound
  * assertion polls with a wide timeout instead of pretending otherwise.
  *
- * The per-test timeouts are 180s, and the reason is a finding rather than a
- * knob. Timing each step against the real server:
+ * The per-test timeouts are large because `connect()` against this mailbox costs
+ * around two minutes. Measured 2026-08-18, decomposed:
  *
- *   connect()     114.4s
- *   sendMessage()   4.3s
- *   disconnect()   41.5s
+ *   IMAP connect + login  73.6s
+ *   mailboxOpen("INBOX")  39.2s
+ *   search UNSEEN         12.4s
+ *   SMTP verify            1.3s
  *
- * Sending is fine. `connect()` calls `_drainUnseen()`, which fetches and
- * dispatches every UNSEEN message before returning — so connect time scales with
- * the unread backlog, not with the protocol. A plain IMAP login against the same
- * mailbox takes 11.7s; this took ten times that with 171 messages sitting
- * unread, and it was fast this morning when the mailbox was nearly empty.
+ * CORRECTION. An earlier version of this comment blamed `_drainUnseen()` —
+ * connect was timed at 114.4s with 171 unread, a plain login at 11.7s, and the
+ * backlog was read as the cause. It was not. With the mailbox at ZERO unread,
+ * connect still takes 109.5s, and the decomposition above puts the cost in
+ * Gmail's own IMAP login and INBOX open. Two measurements taken minutes apart
+ * put the login at 38.2s and 73.6s, so the variance alone is wider than the
+ * effect that was attributed to the drain.
  *
- * Draining on connect is defensible — a bot should not miss what arrived while
- * it was down. Blocking connect() on it is the part worth questioning: a bot
- * restarting after a busy period is unresponsive for minutes, and the operator
- * sees a hang. Recorded here rather than changed, because altering drain
- * semantics is a design decision and not a test fix.
+ * The lesson is worth more than the number: the first reading was a correlation
+ * (slow connect, large backlog) written down as a cause. Draining the backlog
+ * fixed a real defect — issue #11, redelivery on every reconnect — and left the
+ * timing essentially where it was.
  */
 
 import { EmailAdapter, type EmailMessageEvent } from "@theokit/gateway-email";
@@ -204,16 +206,13 @@ describeLiveInbound(EMAIL, "inbound round trip", () => {
     } finally {
       await adapter.disconnect();
     }
-    // 420s, and the extra budget is NOT slack for a slow network — it is the
-    // cost of issue #11. `connect()` re-fetches the full body of every UNSEEN
-    // message before it returns, and the mailbox holds 166 of them because the
-    // adapter never marks anything \Seen on the server. Measured 2026-08-18:
-    // IMAP login alone 38.2s, and the drain on top of it overran the 180s this
-    // test used to allow, so the round trip could not even be attempted.
+    // 420s = connect (~110s, see the file header) + delivery + the 120s poll,
+    // with room for Gmail's login latency, which was measured at 38.2s and
+    // 73.6s minutes apart on the same mailbox.
     //
-    // This number therefore tracks a defect, not a property of email. It should
-    // come back down to ~180s once #11 lands — and if it ever needs raising
-    // again, that is the backlog growing, which is the same bug reporting
-    // itself a second time.
+    // This budget was first raised from 180s "until issue #11 lands". #11 has
+    // landed and the number stays, because the premise was wrong: the cost is
+    // Gmail's IMAP, not our backlog. Lowering it now would only make the suite
+    // fail on a slow login.
   }, 420_000);
 });

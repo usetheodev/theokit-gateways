@@ -31,6 +31,33 @@ export class MatrixAdapter extends BasePlatformAdapter {
   private readonly aliasCache = new AliasCache();
   private connected = false;
   private readonly warnedEncrypted = new Set<string>();
+  /** True only between disconnect() and the next connect() — see #12. */
+  private tearingDown = false;
+
+  /**
+   * `fetch` for the SDK that leaves teardown aborts unsettled instead of
+   * rejecting (#12).
+   *
+   * A request aborted while we are tearing the client down has no consumer left
+   * that could act on the outcome, so an unsettled promise costs a continuation
+   * and nothing else; the alternative is a rejection with no handler anywhere,
+   * which ends the host process. It is scoped to the teardown window on purpose:
+   * a consumer using the `getClient()` escape hatch (D421) may pass its own
+   * abort signal to `search()` or `slidingSync()` and MUST still see those
+   * rejections, so outside teardown every error propagates untouched.
+   */
+  private teardownSafeFetch(): typeof globalThis.fetch {
+    const base = globalThis.fetch.bind(globalThis);
+    return (input, init) =>
+      base(input, init).catch((err: unknown) => {
+        if (this.tearingDown && isAbortError(err)) {
+          return new Promise<Response>(() => {
+            /* deliberately never settles — see the doc comment */
+          });
+        }
+        throw err;
+      });
+  }
 
   constructor(opts: MatrixAdapterOptions) {
     super();
@@ -58,11 +85,13 @@ export class MatrixAdapter extends BasePlatformAdapter {
 
   async connect(): Promise<boolean> {
     if (this.connected) return true;
+    this.tearingDown = false;
     try {
       const cfg = {
         baseUrl: this.opts.homeserverUrl,
         accessToken: this.opts.accessToken,
         userId: this.opts.userId,
+        fetchFn: this.teardownSafeFetch(),
       };
       const factory = this.opts.__clientFactory;
       this.client =
@@ -89,19 +118,17 @@ export class MatrixAdapter extends BasePlatformAdapter {
 
   async disconnect(): Promise<void> {
     if (!this.connected) return;
-    // KNOWN, UNRESOLVED: `stopClient()` aborts the /sync request that is still in
-    // flight, and matrix-js-sdk lets that AbortError escape as an UNHANDLED
-    // rejection — it holds the sync promise internally and exposes no hook to
-    // await or catch it. Node has terminated on unhandled rejections by default
-    // since v15, so an application that calls disconnect() inside a reconnect
-    // loop can be killed by its own clean shutdown.
+    // Issue #12. `stopClient()` aborts the requests still in flight, and the
+    // AbortError escapes as an UNHANDLED rejection — the rejecting promise is
+    // the SDK's own `authedRequest` wrapper, which no caller catches and which
+    // we cannot reach. Node has terminated on unhandled rejections by default
+    // since v15, so an application calling disconnect() inside a reconnect loop
+    // could be killed by its own clean shutdown. Measured against a real
+    // homeserver: 7 occurrences in 8 connect/disconnect cycles.
     //
-    // The e2e suite filters that one rejection (see e2e/src/setup.ts) so a green
-    // run is not reported as red, which is a test concern. This is the product
-    // concern, and filtering does not answer it. Fixing it properly means either
-    // an upstream change or holding our own AbortController for the sync
-    // request; neither is a one-line change, so it is recorded rather than
-    // quietly patched.
+    // `teardownSafeFetch` closes it at the only seam the SDK offers. The flag is
+    // set here, before the abort, and cleared by the next connect().
+    this.tearingDown = true;
     this.subscription?.unsubscribe();
     this.subscription = undefined;
     this.client?.stopClient();
@@ -212,6 +239,18 @@ export class MatrixAdapter extends BasePlatformAdapter {
       `[gateway-matrix] room ${roomId} is end-to-end encrypted; skipping (E2EE deferred to v0.2)\n`,
     );
   }
+}
+
+/**
+ * Narrow abort detection. `DOMException.ABORT_ERR` is 20; the message check
+ * covers runtimes that report the abort without the standard name or code.
+ */
+function isAbortError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { name?: unknown; code?: unknown; message?: unknown };
+  if (e.name === "AbortError") return true;
+  if (e.code === 20) return true;
+  return typeof e.message === "string" && /aborted/i.test(e.message);
 }
 
 interface MatrixRestError {
