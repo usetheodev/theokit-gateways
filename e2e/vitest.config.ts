@@ -15,5 +15,8 @@ export default defineConfig({
     // A live suite that retries hides an intermittent contract break, which is
     // exactly the thing these tests exist to catch.
     retry: 0,
+    // Filters the abort rejection matrix-js-sdk emits on stopClient, and only
+    // that — every other unhandled rejection still fails the run. See the file.
+    setupFiles: ["./src/setup.ts"],
   },
 });
