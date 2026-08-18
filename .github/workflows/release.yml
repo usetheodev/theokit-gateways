@@ -40,6 +40,23 @@ jobs:
       # `workflow_dispatch` bypasses the PR gate, and this one it cannot bypass.
       - name: Test before publishing
         run: pnpm -r run test
+
+      # The changesets action creates a "Version Packages" commit, and `prepare`
+      # points core.hooksPath at .githooks — so the repository's pre-commit
+      # secret gate runs here too. That gate is fail-closed by design: without
+      # the binary it aborts rather than waving the commit through. Installing
+      # it keeps the gate real in CI instead of switching it off, which is the
+      # whole point of a gate that refuses to disable itself.
+      #
+      # Pinned to the version secret-scan.yml uses, so both paths scan alike.
+      - name: Install TruffleHog for the pre-commit gate
+        run: |
+          set -euo pipefail
+          VERSION=3.97.0
+          curl -sSfL "https://github.com/trufflesecurity/trufflehog/releases/download/v${VERSION}/trufflehog_${VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp trufflehog
+          sudo install -m 0755 /tmp/trufflehog /usr/local/bin/trufflehog
+          trufflehog --version
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
