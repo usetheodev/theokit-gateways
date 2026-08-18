@@ -20,10 +20,12 @@
     "mattermost:down": "tsx scripts/teardown-docker.ts mattermost"
   },
   "devDependencies": {
+    "@line/bot-sdk": "^9.0.0",
     "@mattermost/client": "^10.0.0",
     "@theokit/gateway": "workspace:*",
     "@theokit/gateway-discord": "workspace:*",
     "@theokit/gateway-email": "workspace:*",
+    "@theokit/gateway-line": "workspace:*",
     "@theokit/gateway-matrix": "workspace:*",
     "@theokit/gateway-mattermost": "workspace:*",
     "@theokit/gateway-slack": "workspace:*",

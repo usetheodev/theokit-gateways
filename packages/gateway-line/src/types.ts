@@ -21,6 +21,17 @@ export interface LineAdapterOptions {
   readonly botUserId?: string;
   /** Default `true`. Set `false` to bypass mention enforcement. */
   readonly requireMention?: boolean;
+  /**
+   * Test seam — inject a client instead of building one from the SDK.
+   *
+   * Mirrors `__imapFactory` in gateway-email and `__clientFactory` in
+   * gateway-matrix. Without it `connect()` cannot be unit-tested at all: it
+   * loads the real SDK and calls the real API, so a "unit" test would depend on
+   * the network and on a live credential.
+   *
+   * @internal
+   */
+  readonly __clientFactory?: () => unknown;
 }
 
 /**

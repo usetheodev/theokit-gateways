@@ -23,6 +23,9 @@ importers:
 
   e2e:
     devDependencies:
+      '@line/bot-sdk':
+        specifier: ^9.0.0
+        version: 9.9.0
       '@mattermost/client':
         specifier: ^10.0.0
         version: 10.12.0(@mattermost/types@9.3.0(typescript@5.9.3))(typescript@5.9.3)
@@ -35,6 +38,9 @@ importers:
       '@theokit/gateway-email':
         specifier: workspace:*
         version: link:../packages/gateway-email
+      '@theokit/gateway-line':
+        specifier: workspace:*
+        version: link:../packages/gateway-line
       '@theokit/gateway-matrix':
         specifier: workspace:*
         version: link:../packages/gateway-matrix

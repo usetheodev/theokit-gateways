@@ -10,6 +10,8 @@ function makeMockClient(): LineSdkClient & {
   replyCalls: Array<{ token: string; messages: unknown[] }>;
   pushCalls: Array<{ to: string; messages: unknown[] }>;
   failNextWith?: unknown;
+  /** Drives the credential-validation path in connect(). */
+  failBotInfoWith?: unknown;
 } {
   const replyCalls: Array<{ token: string; messages: unknown[] }> = [];
   const pushCalls: Array<{ to: string; messages: unknown[] }> = [];
@@ -17,6 +19,7 @@ function makeMockClient(): LineSdkClient & {
     replyCalls,
     pushCalls,
     failNextWith: undefined,
+    failBotInfoWith: undefined,
     async replyMessage(token, messages) {
       const self = this as { failNextWith?: unknown };
       if (self.failNextWith !== undefined) {
@@ -26,6 +29,11 @@ function makeMockClient(): LineSdkClient & {
       }
       replyCalls.push({ token, messages: [...messages] });
       return undefined;
+    },
+    async getBotInfo() {
+      const self = this as { failBotInfoWith?: unknown };
+      if (self.failBotInfoWith !== undefined) throw self.failBotInfoWith;
+      return { userId: "Ubot", displayName: "theokit-bot" };
     },
     async pushMessage(to, messages) {
       const self = this as { failNextWith?: unknown };
@@ -41,6 +49,7 @@ function makeMockClient(): LineSdkClient & {
     replyCalls: Array<{ token: string; messages: unknown[] }>;
     pushCalls: Array<{ to: string; messages: unknown[] }>;
     failNextWith?: unknown;
+    failBotInfoWith?: unknown;
   };
 }
 
@@ -492,13 +501,44 @@ describe("LineAdapter mention guard (D409)", () => {
  */
 describe("LineAdapter lifecycle", () => {
   it("connect() builds a client and reports success", async () => {
-    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    // Injected: connect() now validates the token against LINE, so without a
+    // seam this "unit" test would need the network and a live credential.
+    const client = makeMockClient();
+    const adapter = new LineAdapter({
+      channelSecret: "s",
+      channelAccessToken: "t",
+      __clientFactory: () => client,
+    });
     expect(await adapter.connect()).toBe(true);
     await adapter.disconnect();
   });
 
+  it("connect() reports failure when LINE rejects the access token", async () => {
+    // Building a LINE client performs no I/O whatsoever, so connect() used to
+    // answer true for any string and the failure surfaced at the first send —
+    // as a 401 that reads like a send bug rather than a bad token. Same gap
+    // MatrixAdapter had; found by writing the live suite for this package.
+    const client = makeMockClient();
+    client.failBotInfoWith = Object.assign(new Error("Invalid access token"), {
+      statusCode: 401,
+    });
+    const adapter = new LineAdapter({
+      channelSecret: "s",
+      channelAccessToken: "bad",
+      __clientFactory: () => client,
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(await adapter.connect()).toBe(false);
+    stderr.mockRestore();
+  });
+
   it("connect() is idempotent — a second call does not rebuild the client", async () => {
-    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    const injected = makeMockClient();
+    const adapter = new LineAdapter({
+      channelSecret: "s",
+      channelAccessToken: "t",
+      __clientFactory: () => injected,
+    });
     await adapter.connect();
     const client = (adapter as unknown as { client: unknown }).client;
     expect(await adapter.connect()).toBe(true);

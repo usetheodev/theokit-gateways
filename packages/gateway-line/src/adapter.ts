@@ -48,11 +48,21 @@ export class LineAdapter extends BasePlatformAdapter {
   async connect(): Promise<boolean> {
     if (this.connected) return true;
     try {
-      const mod = await loadLineSdk();
-      this.client = makeClient(mod, {
-        channelAccessToken: this.opts.channelAccessToken,
-        channelSecret: this.opts.channelSecret,
-      });
+      const factory = this.opts.__clientFactory;
+      if (factory === undefined) {
+        const mod = await loadLineSdk();
+        this.client = makeClient(mod, {
+          channelAccessToken: this.opts.channelAccessToken,
+          channelSecret: this.opts.channelSecret,
+        });
+      } else {
+        this.client = factory() as LineSdkClient;
+      }
+      // Validate the credential before reporting success. Building the client
+      // performs NO network I/O, so without this connect() answered true for any
+      // string and the failure surfaced only at the first send — as a 401 that
+      // looks like a send bug rather than a bad token.
+      await this.client.getBotInfo();
       this.connected = true;
       return true;
     } catch (err) {

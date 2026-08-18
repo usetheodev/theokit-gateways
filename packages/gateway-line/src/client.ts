@@ -10,6 +10,16 @@ export interface LineSdkClient {
     messages: Array<{ type: "text"; text: string }>,
   ): Promise<unknown>;
   pushMessage(to: string, messages: Array<{ type: "text"; text: string }>): Promise<unknown>;
+  /**
+   * `GET /v2/bot/info` — the cheapest call that makes LINE judge the token.
+   *
+   * `connect()` needs it because building a client performs no I/O at all: it
+   * would otherwise report success for any string, and the operator would find
+   * out at the first send. Telegram, Discord, Slack and Mattermost all surface a
+   * bad credential from connect(); Matrix did not until 2026-08-17, and this was
+   * the second adapter with the same gap.
+   */
+  getBotInfo(): Promise<{ userId?: string; displayName?: string }>;
 }
 
 /**
@@ -19,6 +29,7 @@ export interface LineSdkClient {
  * the two is what broke every outbound message before 2026-08-17.
  */
 interface LineV9Client {
+  getBotInfo(): Promise<{ userId?: string; displayName?: string }>;
   replyMessage(request: {
     replyToken: string;
     messages: Array<{ type: "text"; text: string }>;
@@ -71,6 +82,9 @@ export function makeClient(
       },
       async pushMessage(to, messages) {
         return client.pushMessage({ to, messages });
+      },
+      async getBotInfo() {
+        return client.getBotInfo();
       },
     };
   }
