@@ -204,5 +204,16 @@ describeLiveInbound(EMAIL, "inbound round trip", () => {
     } finally {
       await adapter.disconnect();
     }
-  }, 180_000);
+    // 420s, and the extra budget is NOT slack for a slow network — it is the
+    // cost of issue #11. `connect()` re-fetches the full body of every UNSEEN
+    // message before it returns, and the mailbox holds 166 of them because the
+    // adapter never marks anything \Seen on the server. Measured 2026-08-18:
+    // IMAP login alone 38.2s, and the drain on top of it overran the 180s this
+    // test used to allow, so the round trip could not even be attempted.
+    //
+    // This number therefore tracks a defect, not a property of email. It should
+    // come back down to ~180s once #11 lands — and if it ever needs raising
+    // again, that is the backlog growing, which is the same bug reporting
+    // itself a second time.
+  }, 420_000);
 });
