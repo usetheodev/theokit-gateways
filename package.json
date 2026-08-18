@@ -11,8 +11,8 @@
   "scripts": {
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
-    "e2e": "pnpm --filter @theokit/gateway-e2e e2e",
-    "e2e:readiness": "pnpm --filter @theokit/gateway-e2e readiness",
+    "integration": "pnpm --filter @theokit/gateway-integration integration",
+    "integration:readiness": "pnpm --filter @theokit/gateway-integration readiness",
     "typecheck": "pnpm -r run typecheck",
     "check": "biome check .",
     "check:fix": "biome check --write .",
