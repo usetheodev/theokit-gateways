@@ -1,5 +1,5 @@
 import type { MessageEvent } from "@theokit/gateway";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MatrixAdapter } from "../src/adapter.js";
 import type { MatrixSdkClient } from "../src/client.js";
@@ -398,6 +398,80 @@ describe("MatrixAdapter lifecycle", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     expect(await adapter.connect()).toBe(false);
     stderr.mockRestore();
+  });
+
+  describe("teardown aborts do not kill the host process (issue #12)", () => {
+    /** Connects with a stubbed global fetch and hands back the SDK's fetchFn. */
+    async function connectCapturingFetchFn(): Promise<{
+      adapter: MatrixAdapter;
+      fetchFn: typeof globalThis.fetch;
+      abort: () => void;
+    }> {
+      let rejectWithAbort: (() => void) | undefined;
+      const stub = vi.fn(
+        () =>
+          new Promise<Response>((_res, rej) => {
+            rejectWithAbort = () => {
+              rej(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }));
+            };
+          }),
+      );
+      vi.spyOn(globalThis, "fetch").mockImplementation(stub as unknown as typeof globalThis.fetch);
+
+      let captured: typeof globalThis.fetch | undefined;
+      const adapter = new MatrixAdapter({
+        homeserverUrl: "https://matrix.example.org",
+        accessToken: "t",
+        userId: "@bot:example.org",
+        __clientFactory: (cfg: unknown) => {
+          captured = (cfg as { fetchFn?: typeof globalThis.fetch }).fetchFn;
+          return makeMockClient();
+        },
+      } as never);
+      await adapter.connect();
+      if (captured === undefined) throw new Error("adapter did not pass fetchFn to the SDK");
+      return { adapter, fetchFn: captured, abort: () => rejectWithAbort?.() };
+    }
+
+    /** Resolves "settled" or "pending" — never hangs the test. */
+    async function settlesWithin(p: Promise<unknown>, ms: number): Promise<string> {
+      return Promise.race([
+        p.then(
+          () => "settled",
+          () => "settled",
+        ),
+        new Promise<string>((r) => setTimeout(() => r("pending"), ms)),
+      ]);
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("leaves an abort unsettled while tearing down", async () => {
+      // The rejecting promise is the SDK's own request wrapper, which nothing
+      // catches and we cannot reach. Unsettled costs a continuation; rejected
+      // ends the process. Measured against a real homeserver before this fix:
+      // 7 unhandled rejections in 8 connect/disconnect cycles.
+      const { adapter, fetchFn, abort } = await connectCapturingFetchFn();
+      const inFlight = fetchFn("https://matrix.example.org/_matrix/client/v3/sync");
+      await adapter.disconnect();
+      abort();
+
+      expect(await settlesWithin(inFlight, 50)).toBe("pending");
+    });
+
+    it("still rejects an abort outside teardown", async () => {
+      // Scope matters as much as the fix. A consumer using the getClient()
+      // escape hatch (D421) can pass its own abort signal to search() or
+      // slidingSync(), and swallowing those would hang it instead of the
+      // process. Outside the teardown window every error propagates.
+      const { fetchFn, abort } = await connectCapturingFetchFn();
+      const inFlight = fetchFn("https://matrix.example.org/_matrix/client/v3/search");
+      abort();
+
+      await expect(inFlight).rejects.toThrow(/aborted/i);
+    });
   });
 
   it("disconnect is idempotent", async () => {

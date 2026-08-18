@@ -31,6 +31,8 @@ export class EmailAdapter extends BasePlatformAdapter {
   readonly platform = "email" as const;
   private readonly options: EmailAdapterOptions;
   private readonly seenUids = new SeenUidSet();
+  /** UIDs finished with in this batch, awaiting one `\Seen` command (#11). */
+  private readonly pendingSeen = new Set<number>();
   private readonly threadStore = new ThreadStore();
   private imap: IImapClient | undefined;
   private smtp: ISmtpClient | undefined;
@@ -203,6 +205,10 @@ export class EmailAdapter extends BasePlatformAdapter {
     for (const msg of messages) {
       this._dispatchInbound(msg.uid, msg.source, msg.headers);
     }
+    // Chain the flush behind this batch's dispatches rather than awaiting them
+    // here: `connect()` calls this, and blocking it on a large backlog is the
+    // slow-connect problem, not something to make worse.
+    this.dispatchQueue = this.dispatchQueue.then(() => this._flushSeen());
   }
 
   /**
@@ -230,6 +236,45 @@ export class EmailAdapter extends BasePlatformAdapter {
     if (this.seenUids.has(uid)) return;
     this.seenUids.add(uid);
 
+    try {
+      await this._dispatchOrDrop(uid, rawBuffer, headers);
+    } finally {
+      // Every exit records, including the drops. A discarded message is finished
+      // with, and leaving it UNSEEN means downloading and re-parsing it on
+      // every drain forever — most of the 166-message backlog measured on the
+      // live mailbox was old own-address probes being re-read and re-thrown-away.
+      //
+      // Recorded AFTER the attempt, not before: a crash in the window between
+      // the two costs at most a duplicate of the single in-flight message,
+      // where flagging first would lose it silently. Duplicates are visible and
+      // apologisable; a support email nobody ever answers is neither.
+      this.pendingSeen.add(uid);
+    }
+  }
+
+  /**
+   * Flush the batch to the server. Never throws — a mailbox we cannot flag is
+   * not worth dropping mail over; those UIDs simply come back on the next drain.
+   */
+  private async _flushSeen(): Promise<void> {
+    if (this.imap === undefined || this.pendingSeen.size === 0) return;
+    const uids = [...this.pendingSeen];
+    this.pendingSeen.clear();
+    try {
+      await this.imap.markSeen(uids);
+    } catch (err) {
+      console.error(
+        `[email] could not flag ${uids.length} message(s) \\Seen (they will be re-delivered):`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  private async _dispatchOrDrop(
+    uid: number,
+    rawBuffer: Buffer,
+    headers: Map<string, string>,
+  ): Promise<void> {
     const event = await normalizeEmail(rawBuffer, {
       botAddress: this.options.address,
       ...(this.options.maxBodyChars !== undefined
