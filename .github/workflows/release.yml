@@ -18,7 +18,7 @@ jobs:
   # the fake implemented a positional signature the real client does not have.
   # The 11 packages published on 2026-08-18 passed unit tests only.
   #
-  # Called, not copied: `e2e.yml` owns the suite, the secrets and the Docker
+  # Called, not copied: `integration.yml` owns the suite, the secrets and the Docker
   # boot, and duplicating any of that here would guarantee the two drift.
   #
   # The trade-off is deliberate and worth stating, because it will be felt: this
@@ -28,7 +28,7 @@ jobs:
   # time an external flake blocks a release. Re-run it instead.
   live-contracts:
     name: Live platform contracts (release gate)
-    uses: ./.github/workflows/e2e.yml
+    uses: ./.github/workflows/integration.yml
     secrets: inherit
 
   release:
