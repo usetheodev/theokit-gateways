@@ -1,8 +1,8 @@
 name: Release
 
 # theokit-gateways: gateway core + 10 platform adapters. Changesets-driven
-# per-package release. Auth via NPM_TOKEN (NODE_AUTH_TOKEN). Provenance disabled
-# while the source repo is private (npm E422) — re-enable when public.
+# per-package release. Auth via NPM_TOKEN (NODE_AUTH_TOKEN), provenance via
+# NPM_CONFIG_PROVENANCE on the publish step.
 
 on:
   push:
@@ -23,6 +23,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Fail before the work, not after it. The run of 2026-08-18 installed,
+      # built, ran the suite, bumped eleven versions, wrote the CHANGELOGs,
+      # committed and pushed a branch — and then died on `npm publish` with
+      # ENEEDAUTH because no NPM_TOKEN existed. Every one of those steps was
+      # wasted, and the cause was only visible at the bottom of the log.
+      #
+      # The token is checked only on the publish path. A run with pending
+      # changesets opens the version PR and needs no npm auth at all, so
+      # demanding one there would block a step that never talks to the registry.
+      - name: Require an npm token before the publish path
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l)
+          if [ "$pending" -gt 0 ]; then
+            echo "$pending pending changeset(s): this run opens the version PR. npm auth not required."
+            exit 0
+          fi
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::No pending changesets, so this run would publish to npm — but NPM_TOKEN is unset. Create an Automation token at npmjs.com (Access Tokens -> Generate New Token -> Automation, with publish rights on @theokit), then: gh secret set NPM_TOKEN --repo ${{ github.repository }}"
+            exit 1
+          fi
+          echo "npm token present; publish path is authorised."
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.0
@@ -57,6 +83,18 @@ jobs:
             | tar xz -C /tmp trufflehog
           sudo install -m 0755 /tmp/trufflehog /usr/local/bin/trufflehog
           trufflehog --version
+      # KNOWN LIMITATION, not fixable here. When there are pending changesets
+      # this step tries to open the "Version Packages" PR and fails with
+      # `HttpError: GitHub Actions is not permitted to create or approve pull
+      # requests` — a repository setting, off by default. The version branch is
+      # still created and pushed, so the recovery is to open the PR by hand:
+      #
+      #   gh pr create --base main --head changeset-release/main --title "Version Packages"
+      #
+      # To stop it recurring, enable Settings -> Actions -> General -> "Allow
+      # GitHub Actions to create and approve pull requests". The other way out
+      # is a PAT in place of GITHUB_TOKEN, which is worse: a long-lived
+      # credential replacing the per-run token this action already gets.
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:
@@ -65,3 +103,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Signed provenance: npm records which repository, commit and workflow
+          # produced each tarball, and consumers can verify it. Worth having for
+          # packages that hold Slack, Telegram and mailbox credentials — the
+          # attestation is what distinguishes a build from this repo from a
+          # tarball someone else pushed under the same name.
+          #
+          # Set here rather than as `publishConfig.provenance` in eleven
+          # package.json files: changesets reads npm config from the
+          # environment, so one line covers every package and cannot drift
+          # between them.
+          #
+          # Preconditions, both already met: the repository is PUBLIC (npm
+          # answers E422 for a private source), and the job declares
+          # `id-token: write` above.
+          NPM_CONFIG_PROVENANCE: true
