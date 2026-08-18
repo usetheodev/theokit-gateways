@@ -17,7 +17,8 @@
     "matrix:up": "tsx scripts/bootstrap-matrix.ts",
     "matrix:down": "tsx scripts/teardown-docker.ts matrix",
     "mattermost:up": "tsx scripts/bootstrap-mattermost.ts",
-    "mattermost:down": "tsx scripts/teardown-docker.ts mattermost"
+    "mattermost:down": "tsx scripts/teardown-docker.ts mattermost",
+    "capture:line": "tsx scripts/capture-line-user.ts"
   },
   "devDependencies": {
     "@line/bot-sdk": "^9.0.0",
