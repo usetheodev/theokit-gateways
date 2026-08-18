@@ -95,5 +95,17 @@ describe("live-test readiness", () => {
     for (const dir of dirs) {
       expect(ids, `tests/${dir}/ has no entry in PLATFORMS`).toContain(dir);
     }
+    // The other direction, which this test claimed in its name and comment and
+    // did not check. Teams, WhatsApp and SMS sat in the registry with no suite
+    // at all for as long as it was one-sided — three of ten platforms invisible
+    // while the readiness report stayed green, which is the failure this file
+    // exists to make impossible.
+    //
+    // A platform with no credentials still gets a suite. It then skips with the
+    // variable it wants named, and "9 skipped, 1 passed" is information; a
+    // missing file is absence wearing the same colour as coverage.
+    for (const id of ids) {
+      expect(dirs, `PLATFORMS has "${id}" but tests/${id}/ does not exist`).toContain(id);
+    }
   });
 });
