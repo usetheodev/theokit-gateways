@@ -243,11 +243,23 @@ export const PLATFORMS: readonly PlatformSpec[] = [
     target: [
       {
         name: "LINE_TEST_USER_ID",
-        what: "User id, `U…`, that has added the bot",
-        where: "Add the bot as a friend, then read it from a webhook delivery or the console",
+        what: "User id, `U…`, of someone who has added the bot",
+        where:
+          "Only obtainable from a webhook delivery — see the caveat. Adding the bot as a friend is " +
+          "not enough on its own, because nothing in the console shows the id.",
       },
     ],
-    caveat: "Inbound needs a public HTTPS webhook URL; outbound and auth run anywhere.",
+    caveat:
+      "AUTH IS VERIFIED; OUTBOUND IS NOT, and the reason is the platform rather than the code. " +
+      "LINE_TEST_USER_ID cannot be obtained without a public HTTPS endpoint: /v2/bot/followers/ids " +
+      'answers 403 "Access to this API is not available for your account" on an unverified ' +
+      "Official Account, and neither the Developers Console nor the Official Account Manager " +
+      "displays the raw id anywhere. Capturing one webhook delivery through a tunnel would settle " +
+      "it permanently — the id never changes — and would also unlock inbound for the other three " +
+      "webhook platforms. Deliberately not done on 2026-08-17. " +
+      "Note also that LINE no longer lets you create a Messaging API channel from the Developers " +
+      "Console: it now requires a LINE Official Account (reCAPTCHA + SMS), then enabling the " +
+      "Messaging API in the Official Account Manager, which permanently links the provider.",
   },
   {
     id: "teams",

@@ -15,10 +15,24 @@
  * It is also the slowest platform here — delivery is not instant, so the inbound
  * assertion polls with a wide timeout instead of pretending otherwise.
  *
- * Every message carries a run marker. The suite does NOT delete what it sends:
- * the target is a dedicated mailbox, and an IMAP delete that raced the watcher
- * would make failures harder to read than the litter is worth. Search
- * `theokit-e2e` to find it all.
+ * The per-test timeouts are 180s, and the reason is a finding rather than a
+ * knob. Timing each step against the real server:
+ *
+ *   connect()     114.4s
+ *   sendMessage()   4.3s
+ *   disconnect()   41.5s
+ *
+ * Sending is fine. `connect()` calls `_drainUnseen()`, which fetches and
+ * dispatches every UNSEEN message before returning — so connect time scales with
+ * the unread backlog, not with the protocol. A plain IMAP login against the same
+ * mailbox takes 11.7s; this took ten times that with 171 messages sitting
+ * unread, and it was fast this morning when the mailbox was nearly empty.
+ *
+ * Draining on connect is defensible — a bot should not miss what arrived while
+ * it was down. Blocking connect() on it is the part worth questioning: a bot
+ * restarting after a busy period is unresponsive for minutes, and the operator
+ * sees a hang. Recorded here rather than changed, because altering drain
+ * semantics is a design decision and not a test fix.
  */
 
 import { EmailAdapter, type EmailMessageEvent } from "@theokit/gateway-email";
@@ -61,7 +75,7 @@ describeLive(
       } finally {
         await adapter.disconnect();
       }
-    }, 60_000);
+    }, 180_000);
 
     it("returns false rather than throwing on a password the server rejects", async () => {
       const adapter = makeAdapter({ password: "nnnnnnnnnnnnnnnn" });
@@ -70,7 +84,7 @@ describeLive(
       } finally {
         await adapter.disconnect();
       }
-    }, 60_000);
+    }, 180_000);
   },
   { sends: false },
 );
@@ -90,7 +104,7 @@ describeLive(EMAIL, "outbound", () => {
     } finally {
       await adapter.disconnect();
     }
-  }, 60_000);
+  }, 180_000);
 
   it("maps an undeliverable recipient into a structured error", async () => {
     // Gmail rejects a malformed recipient at RCPT TO, synchronously. A domain
@@ -109,22 +123,22 @@ describeLive(EMAIL, "outbound", () => {
     } finally {
       await adapter.disconnect();
     }
-  }, 60_000);
+  }, 180_000);
 
   it("refuses empty text without opening an SMTP transaction", async () => {
+    // Deliberately does NOT connect. `sendMessage` checks `text.length === 0`
+    // before it looks at the connection, so the refusal is observable without
+    // one — and connecting here would cost the 114s drain for nothing, which is
+    // what it used to do. Skipping it makes the test both faster and a sharper
+    // statement: empty text is refused by the adapter, not by the transport.
     const adapter = makeAdapter();
-    try {
-      await adapter.connect();
-      const result = await adapter.sendMessage({
-        channel: { id: required("EMAIL_TEST_RECIPIENT"), type: "dm" },
-        text: "",
-      });
-      expect(result.ok).toBe(false);
-      expect(result.error?.code).toBe("empty_text");
-    } finally {
-      await adapter.disconnect();
-    }
-  }, 60_000);
+    const result = await adapter.sendMessage({
+      channel: { id: required("EMAIL_TEST_RECIPIENT"), type: "dm" },
+      text: "",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("empty_text");
+  }, 30_000);
 });
 
 describeLiveInbound(EMAIL, "inbound round trip", () => {
