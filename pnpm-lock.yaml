@@ -50,9 +50,18 @@ importers:
       '@theokit/gateway-slack':
         specifier: workspace:*
         version: link:../packages/gateway-slack
+      '@theokit/gateway-sms':
+        specifier: workspace:*
+        version: link:../packages/gateway-sms
+      '@theokit/gateway-teams':
+        specifier: workspace:*
+        version: link:../packages/gateway-teams
       '@theokit/gateway-telegram':
         specifier: workspace:*
         version: link:../packages/gateway-telegram
+      '@theokit/gateway-whatsapp':
+        specifier: workspace:*
+        version: link:../packages/gateway-whatsapp
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.21
