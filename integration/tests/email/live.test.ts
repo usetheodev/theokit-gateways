@@ -38,7 +38,7 @@
  */
 
 import { EmailAdapter, type EmailMessageEvent } from "@theokit/gateway-email";
-import { expect, it } from "vitest";
+import { afterAll, expect, it } from "vitest";
 
 import { optional, required, runMarker } from "../../src/credentials.js";
 import { describeLive, describeLiveInbound, waitFor } from "../../src/harness.js";
@@ -64,22 +64,71 @@ function makeAdapter(overrides: Record<string, unknown> = {}): EmailAdapter {
   });
 }
 
+/**
+ * ONE connection shared by every test that merely needs a connected adapter.
+ *
+ * Gmail throttles repeated IMAP logins, and the suite was paying that toll five
+ * times per run. Measured on the same mailbox within one day: a login took 38.2s,
+ * then 73.6s, and finally four consecutive logins failed to finish inside ten
+ * minutes at all. That is what failed the release gate on 2026-08-18 — two email
+ * tests timed out while the other fifty passed, and nothing was wrong with the
+ * product.
+ *
+ * Lazily created, which also settles the awkward case: a run where the live
+ * suites skip never calls this, so it never opens a connection it does not need.
+ *
+ * The tests stay independent in the way that matters — each sends its own marker
+ * and asserts on its own message. What they share is the transport, which is a
+ * fixture, not shared state under test. The two tests that assert on `connect()`
+ * itself deliberately keep their own adapter; they are testing the thing this
+ * helper is caching.
+ */
+let shared: EmailAdapter | undefined;
+const inbox: string[] = [];
+
+async function connectedAdapter(): Promise<EmailAdapter> {
+  if (shared === undefined) {
+    const adapter = makeAdapter();
+    adapter.onInbound(async (event) => {
+      const email = event as EmailMessageEvent;
+      inbox.push(`${email.email?.subject ?? ""} ${email.text}`);
+    });
+    // Checking the return value is the difference between one honest failure
+    // and five confusing ones. `connect()` reports failure by returning false,
+    // so an unchecked call caches a disconnected adapter and every test after
+    // it fails on a symptom instead of the cause.
+    const ok = await adapter.connect();
+    if (!ok) throw new Error("email connect() returned false — credentials or host wrong");
+    shared = adapter;
+  }
+  return shared;
+}
+
+afterAll(async () => {
+  await shared?.disconnect();
+  shared = undefined;
+});
+
 describeLive(
   EMAIL,
   "authentication",
   () => {
     it("connects to both IMAP and SMTP with the real credentials", async () => {
-      // One connect() covers two servers. If either half is wrong the adapter
-      // must say so rather than half-starting.
-      const adapter = makeAdapter();
-      try {
-        expect(await adapter.connect()).toBe(true);
-      } finally {
-        await adapter.disconnect();
-      }
-    }, 180_000);
+      // One connect() covers two servers, and this asserts the shared login
+      // rather than opening a second one. Its own login is what failed the
+      // release gate on 2026-08-18: Gmail throttles repeated IMAP logins hard
+      // enough that a single one can outlast 180s, and paying for it twice to
+      // assert the same fact was the whole problem.
+      //
+      // `connectedAdapter()` throws when connect() returns false, so this test
+      // is where that failure gets a name instead of five downstream symptoms.
+      await expect(connectedAdapter()).resolves.toBeDefined();
+    }, 420_000);
 
     it("returns false rather than throwing on a password the server rejects", async () => {
+      // Keeps its own adapter, necessarily: it is asserting on connect() with a
+      // credential the shared one must never carry. A rejected login is also
+      // the fast path — the server refuses instead of throttling.
       const adapter = makeAdapter({ password: "nnnnnnnnnnnnnnnn" });
       try {
         expect(await adapter.connect()).toBe(false);
@@ -93,38 +142,28 @@ describeLive(
 
 describeLive(EMAIL, "outbound", () => {
   it("sends a message the SMTP server accepts, and returns its id", async () => {
-    const adapter = makeAdapter();
+    const adapter = await connectedAdapter();
     const marker = runMarker();
-    try {
-      await adapter.connect();
-      const result = await adapter.sendMessage({
-        channel: { id: required("EMAIL_TEST_RECIPIENT"), type: "dm" },
-        text: `${marker} outbound ok`,
-      });
-      expect(result.ok).toBe(true);
-      expect(result.messageId).toBeDefined();
-    } finally {
-      await adapter.disconnect();
-    }
+    const result = await adapter.sendMessage({
+      channel: { id: required("EMAIL_TEST_RECIPIENT"), type: "dm" },
+      text: `${marker} outbound ok`,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.messageId).toBeDefined();
   }, 180_000);
 
   it("maps an undeliverable recipient into a structured error", async () => {
     // Gmail rejects a malformed recipient at RCPT TO, synchronously. A domain
     // that merely does not exist would bounce later and asynchronously, which no
     // test can wait for — so the assertion targets the synchronous refusal.
-    const adapter = makeAdapter();
-    try {
-      await adapter.connect();
-      const result = await adapter.sendMessage({
-        channel: { id: "not-an-address", type: "dm" },
-        text: "this address is not deliverable",
-      });
-      expect(result.ok).toBe(false);
-      expect(result.error?.code).toBeDefined();
-      expect(result.error?.message.length ?? 0).toBeGreaterThan(0);
-    } finally {
-      await adapter.disconnect();
-    }
+    const adapter = await connectedAdapter();
+    const result = await adapter.sendMessage({
+      channel: { id: "not-an-address", type: "dm" },
+      text: "this address is not deliverable",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBeDefined();
+    expect(result.error?.message.length ?? 0).toBeGreaterThan(0);
   }, 180_000);
 
   it("refuses empty text without opening an SMTP transaction", async () => {
@@ -172,17 +211,13 @@ describeLiveInbound(EMAIL, "inbound round trip", () => {
       return;
     }
 
-    const adapter = makeAdapter();
+    // The shared adapter is already connected and already has a handler feeding
+    // `inbox`, so the probe is matched by marker rather than by owning the only
+    // handler. That is what keeps this test independent while sharing a login.
     const marker = runMarker();
-    const seen: string[] = [];
+    await connectedAdapter();
 
-    try {
-      adapter.onInbound(async (event) => {
-        const email = event as EmailMessageEvent;
-        seen.push(`${email.email?.subject ?? ""} ${email.text}`);
-      });
-      await adapter.connect();
-
+    {
       const { createTransport } = await import("nodemailer");
       const sender = createTransport({
         host: optional("EMAIL_TEST_SENDER_SMTP_HOST") ?? required("EMAIL_SMTP_HOST"),
@@ -198,13 +233,11 @@ describeLiveInbound(EMAIL, "inbound round trip", () => {
       });
 
       // Delivery is usually seconds, but "usually" is not a contract.
-      await waitFor(() => seen.find((t) => t.includes(marker)), {
+      await waitFor(() => inbox.find((line) => line.includes(marker)), {
         timeoutMs: 120_000,
         intervalMs: 2_000,
         label: `an inbound email containing ${marker}`,
       });
-    } finally {
-      await adapter.disconnect();
     }
     // 420s = connect (~110s, see the file header) + delivery + the 120s poll,
     // with room for Gmail's login latency, which was measured at 38.2s and
