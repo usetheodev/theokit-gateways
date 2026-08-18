@@ -12,8 +12,28 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  # The live suites gate the publish. Unit tests alone were never enough here:
+  # every defect found the week of 2026-08-18 was invisible to them, and the
+  # worst one shipped with EIGHT green unit tests while LINE delivered nothing —
+  # the fake implemented a positional signature the real client does not have.
+  # The 11 packages published on 2026-08-18 passed unit tests only.
+  #
+  # Called, not copied: `e2e.yml` owns the suite, the secrets and the Docker
+  # boot, and duplicating any of that here would guarantee the two drift.
+  #
+  # The trade-off is deliberate and worth stating, because it will be felt: this
+  # couples a release to third-party availability. If Slack is down, the publish
+  # waits. A release is rarely urgent, and the alternative is publishing blind.
+  # The real risk is not the delay — it is someone deleting this gate the first
+  # time an external flake blocks a release. Re-run it instead.
+  live-contracts:
+    name: Live platform contracts (release gate)
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
+
   release:
     name: Release via Changesets (gateways)
+    needs: live-contracts
     runs-on: ubuntu-latest
     permissions:
       contents: write
