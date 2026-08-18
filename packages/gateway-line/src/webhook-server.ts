@@ -43,6 +43,24 @@ async function loadExpress(): Promise<{ default: () => Express }> {
 }
 
 function rawCapture(req: Request, _res: Response, next: NextFunction): void {
+  // Someone else already drained the stream — a global `express.json()` or
+  // `express.urlencoded()` mounted ahead of this router is the usual cause.
+  // Without this branch, `req.on("end")` never fires for a stream that already
+  // ended, `next()` is never called, and the request HANGS with no response at
+  // all: the provider times out and retries, and no error is logged anywhere.
+  // Failing loudly and continuing is strictly better — verification then
+  // refuses the empty body with a 401, which is at least a visible symptom that
+  // points at the real cause.
+  if (req.readableEnded || req.complete) {
+    process.stderr.write(
+      "[gateway] raw body already consumed before signature capture — mount this router " +
+        "BEFORE any global body parser, or signature verification cannot see the bytes it " +
+        "must hash\n",
+    );
+    (req as Request & { rawBody: string }).rawBody = "";
+    next();
+    return;
+  }
   let buf = "";
   req.setEncoding("utf8");
   req.on("data", (chunk: string) => {

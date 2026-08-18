@@ -1,7 +1,6 @@
 /**
  * Telegram's 4096-char per-message cap. Split agent responses on safe
- * boundaries before sending (T5.1, ported from examples/telegram-pro
- * with EC-J markdown-pair preservation).
+ * boundaries before sending (T5.1, with EC-J markdown-pair preservation).
  */
 
 const TELEGRAM_MAX_MESSAGE = 4096;
@@ -27,8 +26,22 @@ export function splitForTelegram(text: string): string[] {
     let boundary = remaining.lastIndexOf("\n\n", SAFE_CHUNK);
     if (boundary < SAFE_CHUNK / 2) boundary = remaining.lastIndexOf("\n", SAFE_CHUNK);
     if (boundary < SAFE_CHUNK / 2) boundary = SAFE_CHUNK;
-    let chunk = remaining.slice(0, boundary);
-    chunk = balanceMarkdownPairs(chunk);
+    const rawChunk = remaining.slice(0, boundary);
+    const balanced = balanceMarkdownPairs(rawChunk);
+    // Forward progress is not negotiable. `balanceMarkdownPairs` trims back to
+    // before an unbalanced marker, and when the only such marker sits at index 0
+    // there is nothing to trim back TO — it returns "". Taking that as the
+    // boundary made `remaining.slice(0)` return the same string on every pass:
+    // an unbounded array of "" and a pegged core. The loop is synchronous, so it
+    // blocks the event loop and no test timeout can interrupt it; the process
+    // has to be killed. Any agent reply over the cap that opened with an
+    // unclosed code span hung the bot.
+    //
+    // When balancing would consume the whole chunk, emit the unbalanced one
+    // instead. Telegram answers that with a markdown_parse_error the caller can
+    // see and map; a hung process shows nothing at all. This mirrors the core
+    // chunker's `cut <= 0 ? window : cut`.
+    const chunk = balanced.length > 0 ? balanced : rawChunk;
     boundary = chunk.length;
     parts.push(chunk);
     remaining = remaining.slice(boundary).replace(/^\n+/, "");

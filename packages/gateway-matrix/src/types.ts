@@ -17,6 +17,21 @@ export interface MatrixAdapterOptions {
    * initial sync are dropped. Default 60000 (60s).
    */
   readonly freshnessWindowMs?: number;
+  /**
+   * Test seam — inject a client instead of building one from the SDK.
+   *
+   * Mirrors `__imapFactory` in gateway-email and `__appFactory` in
+   * gateway-teams. It exists so `connect()` itself can be unit-tested, including
+   * the credential check: `_installClient` bypasses connect() entirely, so
+   * without this the only coverage of that path was the live suite.
+   *
+   * @internal
+   */
+  readonly __clientFactory?: (opts: {
+    baseUrl: string;
+    accessToken: string;
+    userId: string;
+  }) => unknown;
 }
 
 /**

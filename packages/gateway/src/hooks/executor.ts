@@ -8,6 +8,8 @@
  * @public
  */
 
+import { Security } from "@theokit/sdk";
+
 import type {
   GatewayHook,
   HookDecision,
@@ -37,9 +39,22 @@ export class HookExecutor {
       try {
         decision = await h.pre_inbound(ctx);
       } catch (err) {
+        // `GatewayRunner.dispatch` replies with this message straight into the
+        // chat, so it must never carry the exception text. It used to:
+        // `hook ${h.name} threw: ${err.message}` sent whatever the hook happened
+        // to throw — connection strings, internal ids, bearer tokens — to the end
+        // user verbatim. The sibling handler path already logs through
+        // `Security.redact` (EC-F); this one skipped redaction entirely, and the
+        // test asserting the raw text appeared locked the leak in as expected
+        // behaviour.
+        //
+        // The detail is not lost, only moved: stderr gets it, redacted.
+        process.stderr.write(
+          `[gateway] pre_inbound hook "${h.name}" threw: ${Security.redact((err as Error).message)}\n`,
+        );
         return {
           block: true,
-          message: `hook ${h.name} threw: ${(err as Error).message}`,
+          message: `Request blocked: hook "${h.name}" failed.`,
         };
       }
       if (decision !== undefined && decision.block === true) {

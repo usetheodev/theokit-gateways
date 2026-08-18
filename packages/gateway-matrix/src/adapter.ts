@@ -59,12 +59,23 @@ export class MatrixAdapter extends BasePlatformAdapter {
   async connect(): Promise<boolean> {
     if (this.connected) return true;
     try {
-      const mod = await loadMatrixSdk();
-      this.client = mod.createClient({
+      const cfg = {
         baseUrl: this.opts.homeserverUrl,
         accessToken: this.opts.accessToken,
         userId: this.opts.userId,
-      });
+      };
+      const factory = this.opts.__clientFactory;
+      this.client =
+        factory === undefined
+          ? (await loadMatrixSdk()).createClient(cfg)
+          : (factory(cfg) as MatrixSdkClient);
+      // Validate the credential BEFORE reporting success. `startClient` kicks
+      // off the sync loop asynchronously and resolves whether or not the token
+      // is any good — so connect() used to answer `true` for a token the server
+      // rejects, leaving an operator with a healthy-looking adapter and total
+      // silence. Every sibling adapter returns false here; this one did not,
+      // and only a real homeserver could show it.
+      await this.client.whoami();
       await this.client.startClient({ initialSyncLimit: INITIAL_SYNC_LIMIT });
       this.attachSync();
       this.connected = true;

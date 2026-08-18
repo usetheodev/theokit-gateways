@@ -1,6 +1,7 @@
 {
   "name": "theokit-gateways-monorepo",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0",
@@ -10,6 +11,8 @@
   "scripts": {
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
+    "e2e": "pnpm --filter @theokit/gateway-e2e e2e",
+    "e2e:readiness": "pnpm --filter @theokit/gateway-e2e readiness",
     "typecheck": "pnpm -r run typecheck",
     "check": "biome check .",
     "check:fix": "biome check --write .",

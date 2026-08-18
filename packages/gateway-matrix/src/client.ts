@@ -15,6 +15,13 @@ export interface MatrixSdkClient extends MatrixClientLike {
   isRoomEncrypted?(roomId: string): boolean;
   /** Best-effort current user id; matrix-js-sdk returns `string | null`. */
   getUserId(): string | null;
+  /**
+   * `/_matrix/client/v3/account/whoami` — the cheapest call that makes the
+   * server judge the access token. `startClient` does not: it begins syncing
+   * asynchronously and resolves regardless, so without this an invalid token
+   * produces a connected-looking adapter that never receives anything.
+   */
+  whoami(): Promise<{ user_id: string }>;
 }
 
 interface MatrixSdkModule {

@@ -1,6 +1,5 @@
 /**
- * Group-chat policy for Telegram bots (T5.1, ported from
- * examples/telegram-pro/src/group-policy.ts).
+ * Group-chat policy for Telegram bots (T5.1).
  *
  * In private chats: respond to everything.
  * In groups: respond only when:

@@ -10,6 +10,8 @@ function makeMockClient(): LineSdkClient & {
   replyCalls: Array<{ token: string; messages: unknown[] }>;
   pushCalls: Array<{ to: string; messages: unknown[] }>;
   failNextWith?: unknown;
+  /** Drives the credential-validation path in connect(). */
+  failBotInfoWith?: unknown;
 } {
   const replyCalls: Array<{ token: string; messages: unknown[] }> = [];
   const pushCalls: Array<{ to: string; messages: unknown[] }> = [];
@@ -17,6 +19,7 @@ function makeMockClient(): LineSdkClient & {
     replyCalls,
     pushCalls,
     failNextWith: undefined,
+    failBotInfoWith: undefined,
     async replyMessage(token, messages) {
       const self = this as { failNextWith?: unknown };
       if (self.failNextWith !== undefined) {
@@ -26,6 +29,11 @@ function makeMockClient(): LineSdkClient & {
       }
       replyCalls.push({ token, messages: [...messages] });
       return undefined;
+    },
+    async getBotInfo() {
+      const self = this as { failBotInfoWith?: unknown };
+      if (self.failBotInfoWith !== undefined) throw self.failBotInfoWith;
+      return { userId: "Ubot", displayName: "theokit-bot" };
     },
     async pushMessage(to, messages) {
       const self = this as { failNextWith?: unknown };
@@ -41,6 +49,7 @@ function makeMockClient(): LineSdkClient & {
     replyCalls: Array<{ token: string; messages: unknown[] }>;
     pushCalls: Array<{ to: string; messages: unknown[] }>;
     failNextWith?: unknown;
+    failBotInfoWith?: unknown;
   };
 }
 
@@ -115,7 +124,42 @@ describe("LineAdapter.sendMessage", () => {
     expect(result.ok).toBe(true);
     expect(client.replyCalls).toHaveLength(1);
     expect(client.replyCalls[0]?.token).toBe("rtok-1");
+    // The fake records the message payload, and across this whole file only
+    // `.token` and `.length` were ever read — so sendMessage could have sent
+    // empty text, or the wrong part, and every test still passed. Every sibling
+    // adapter asserts the payload; this one now does too.
+    expect(client.replyCalls[0]?.messages).toEqual([{ type: "text", text: "hi" }]);
     expect(client.pushCalls).toHaveLength(0);
+  });
+
+  it("sends to the requested recipient, with the requested text", async () => {
+    // The recipient was never asserted anywhere. `pushMessage` could have been
+    // called with the wrong targetId — another user's channel — and nothing in
+    // the suite would have noticed.
+    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    const client = makeMockClient();
+    installMockClient(adapter, client);
+
+    await adapter.sendMessage({ channel: { id: "U-bob", type: "dm" }, text: "for bob" });
+
+    expect(client.pushCalls[0]?.to).toBe("U-bob");
+    expect(client.pushCalls[0]?.messages).toEqual([{ type: "text", text: "for bob" }]);
+  });
+
+  it("sends every part in order, none dropped or repeated", async () => {
+    // With only length assertions, sending parts[i-1] on every iteration — a
+    // classic off-by-one — produced the right CALL COUNT and passed.
+    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    const client = makeMockClient();
+    installMockClient(adapter, client);
+    const long = `${"a".repeat(4000)}\n\n${"b".repeat(4000)}`;
+
+    await adapter.sendMessage({ channel: { id: "U-alice", type: "dm" }, text: long });
+
+    const sent = client.pushCalls.map((c) => (c.messages[0] as { text: string }).text);
+    expect(sent.length).toBeGreaterThan(1);
+    expect(sent.join("").replace(/\n/g, "")).toBe(long.replace(/\n/g, ""));
+    expect(new Set(sent).size).toBe(sent.length);
   });
 
   it("falls back to push API when no reply token cached", async () => {
@@ -444,5 +488,116 @@ describe("LineAdapter mention guard (D409)", () => {
       ],
     });
     expect(received).toHaveLength(1);
+  });
+});
+
+/**
+ * `connect()` and `disconnect()` had zero coverage. Every test in this file
+ * reaches past them via `installMockClient`, which writes `connected` directly,
+ * so the real lifecycle was never invoked: deleting `this.replyCache.clear()`
+ * from `disconnect()` left a reconnected adapter replaying an expired reply
+ * token — a LINE 400 on the first message after every restart — with the suite
+ * green.
+ */
+describe("LineAdapter lifecycle", () => {
+  it("connect() builds a client and reports success", async () => {
+    // Injected: connect() now validates the token against LINE, so without a
+    // seam this "unit" test would need the network and a live credential.
+    const client = makeMockClient();
+    const adapter = new LineAdapter({
+      channelSecret: "s",
+      channelAccessToken: "t",
+      __clientFactory: () => client,
+    });
+    expect(await adapter.connect()).toBe(true);
+    await adapter.disconnect();
+  });
+
+  it("connect() reports failure when LINE rejects the access token", async () => {
+    // Building a LINE client performs no I/O whatsoever, so connect() used to
+    // answer true for any string and the failure surfaced at the first send —
+    // as a 401 that reads like a send bug rather than a bad token. Same gap
+    // MatrixAdapter had; found by writing the live suite for this package.
+    const client = makeMockClient();
+    client.failBotInfoWith = Object.assign(new Error("Invalid access token"), {
+      statusCode: 401,
+    });
+    const adapter = new LineAdapter({
+      channelSecret: "s",
+      channelAccessToken: "bad",
+      __clientFactory: () => client,
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(await adapter.connect()).toBe(false);
+    stderr.mockRestore();
+  });
+
+  it("connect() is idempotent — a second call does not rebuild the client", async () => {
+    const injected = makeMockClient();
+    const adapter = new LineAdapter({
+      channelSecret: "s",
+      channelAccessToken: "t",
+      __clientFactory: () => injected,
+    });
+    await adapter.connect();
+    const client = (adapter as unknown as { client: unknown }).client;
+    expect(await adapter.connect()).toBe(true);
+    expect((adapter as unknown as { client: unknown }).client).toBe(client);
+    await adapter.disconnect();
+  });
+
+  it("disconnect() drops the cached reply tokens", async () => {
+    // A reply token is valid for ~30 seconds and single-use. Carrying one across
+    // a reconnect means the first send after a restart uses a token LINE has
+    // already expired, and answers 400.
+    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    const client = makeMockClient();
+    installMockClient(adapter, client);
+    adapter._cacheReplyToken("U-alice", "rtok-stale");
+
+    await adapter.disconnect();
+    installMockClient(adapter, client);
+    await adapter.sendMessage({ channel: { id: "U-alice", type: "dm" }, text: "after restart" });
+
+    // Push, not reply: the stale token must not have survived.
+    expect(client.replyCalls).toHaveLength(0);
+    expect(client.pushCalls).toHaveLength(1);
+  });
+
+  it("disconnect() clears the inbound handler", async () => {
+    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    installMockClient(adapter, makeMockClient());
+    const received: MessageEvent[] = [];
+    adapter.onInbound(async (ev) => {
+      received.push(ev);
+    });
+
+    await adapter.disconnect();
+    await adapter.dispatchWebhookBody({
+      events: [
+        {
+          type: "message",
+          source: { type: "user", userId: "U-alice" },
+          replyToken: "r",
+          message: { type: "text", id: "m-1", text: "hi" },
+        },
+      ],
+    });
+
+    expect(received).toHaveLength(0);
+  });
+
+  it("disconnect() is idempotent on a never-connected adapter", async () => {
+    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    await adapter.disconnect();
+    await adapter.disconnect();
+    expect(adapter.platform).toBe("line");
+  });
+
+  it("sendMessage before connect() reports not_connected instead of throwing", async () => {
+    const adapter = new LineAdapter({ channelSecret: "s", channelAccessToken: "t" });
+    const r = await adapter.sendMessage({ channel: { id: "U-alice", type: "dm" }, text: "hi" });
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("not_connected");
   });
 });

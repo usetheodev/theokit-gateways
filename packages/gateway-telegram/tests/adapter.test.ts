@@ -11,6 +11,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TelegramAdapter } from "../src/adapter.js";
 
+/** A minimal normalized event, for driving the internal dispatch seam. */
+function makeEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "1",
+    platform: "telegram",
+    sender: { id: "42" },
+    channel: { id: "100", type: "dm" },
+    text: "hi",
+    receivedAt: 1_700_000_000_000,
+    telegram: { chatId: 100, messageId: 1, fromId: 42 },
+    ...overrides,
+  } as unknown as Parameters<TelegramAdapter["dispatchEvent"]>[0];
+}
+
 describe("TelegramAdapter (T5.1)", () => {
   let adapter: TelegramAdapter;
 
@@ -53,11 +67,36 @@ describe("TelegramAdapter (T5.1)", () => {
     adapter.onInbound(async () => {
       calls.push("second");
     });
-    // Simulate inbound by invoking the private handler path through a fake ctx.
-    // We exercise this via the internal handleInbound — but it's private, so
-    // we use the public surface: emit through the bot's middleware. Skip
-    // direct call here; covered by integration in the dogfood.
-    expect(calls).toEqual([]);
+
+    // This used to assert `calls` was empty, under a comment explaining that
+    // the direct call was skipped and "covered by integration in the dogfood".
+    // An empty array holds whether onInbound replaces, stacks, or discards —
+    // the assertion could not fail. `dispatchEvent` is the internal seam that
+    // makes the contract answerable without a grammy Context.
+    await adapter.dispatchEvent(makeEvent());
+
+    expect(calls).toEqual(["second"]);
+  });
+
+  it("the unsubscribe from a replaced handler does not silence the live one", async () => {
+    const calls: string[] = [];
+    const offFirst = adapter.onInbound(async () => {
+      calls.push("first");
+    });
+    adapter.onInbound(async () => {
+      calls.push("second");
+    });
+
+    offFirst(); // stale
+    await adapter.dispatchEvent(makeEvent());
+
+    expect(calls).toEqual(["second"]);
+  });
+
+  it("reports no_handler once the live handler unsubscribes", async () => {
+    const off = adapter.onInbound(async () => {});
+    off();
+    expect(await adapter.dispatchEvent(makeEvent())).toBe("no_handler");
   });
 
   it("EC-I: connect() with bad token resolves to false (does NOT throw)", async () => {

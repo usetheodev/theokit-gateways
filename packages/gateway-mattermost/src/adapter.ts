@@ -22,6 +22,7 @@ import {
 import { ConfigurationError } from "./errors.js";
 import { shouldRespond } from "./filters.js";
 import { mapChannelType, normalizeMattermostType, postToMessageEvent } from "./normalize.js";
+import { splitForMattermost } from "./split.js";
 import type { MattermostAdapterOptions, MattermostPost } from "./types.js";
 
 export class MattermostAdapter extends BasePlatformAdapter {
@@ -90,14 +91,21 @@ export class MattermostAdapter extends BasePlatformAdapter {
       };
     }
     try {
-      const post = await this.handle.client.createPost({
-        channel_id: out.channel.id,
-        message: out.text,
-        ...(out.channel.type === "thread" && out.channel.topicId !== undefined
-          ? { root_id: out.channel.topicId }
-          : {}),
-      });
-      return { ok: true, messageId: post.id };
+      // Split before sending. This package used to post `out.text` whole, alone
+      // among the ten adapters, so anything past Mattermost's 16383-rune cap came
+      // back HTTP 400 and the user saw nothing at all.
+      let lastId: string | undefined;
+      for (const chunk of splitForMattermost(out.text)) {
+        const post = await this.handle.client.createPost({
+          channel_id: out.channel.id,
+          message: chunk,
+          ...(out.channel.type === "thread" && out.channel.topicId !== undefined
+            ? { root_id: out.channel.topicId }
+            : {}),
+        });
+        lastId = post.id;
+      }
+      return { ok: true, ...(lastId !== undefined ? { messageId: lastId } : {}) };
     } catch (err) {
       return mapMattermostError(err);
     }

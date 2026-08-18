@@ -5,6 +5,7 @@ export { connectMattermost, getChannelCached, wsUrlFromBase } from "./client.js"
 export { ConfigurationError, SDKNotInstalledError } from "./errors.js";
 export { hasMentionWithBoundary, shouldRespond } from "./filters.js";
 export { mapChannelType, normalizeMattermostType, postToMessageEvent } from "./normalize.js";
+export { splitForMattermost } from "./split.js";
 export type {
   MattermostAdapterOptions,
   MattermostChannel,

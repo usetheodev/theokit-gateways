@@ -4,4 +4,3 @@ Microsoft Teams platform adapter for `@theokit/gateway`. Built on the modern `@m
 
 Status: **v0.1.0 pre-release**. Pre-1.0 contract per ADR D324 — breaking changes allowed within 0.x.
 
-See `examples/teams-bot/` for a full reference implementation with Azure Bot Service setup walkthrough.

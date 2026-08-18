@@ -2,14 +2,29 @@
  * Tests for DiscordAdapter (T6.1, EC-C default intents).
  *
  * Unit tests cover the bits that don't require a real Discord API
- * connection. Integration coverage comes from examples/gateway-discord
- * (manual probe).
+ * connection. There is currently NO integration coverage: the manual probe
+ * this comment used to point at lived under `examples/`, which was removed on
+ * 2026-08-17, and it pointed at a path that had already stopped existing.
  */
 
 import { GatewayIntentBits } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DISCORD_INTENTS, DiscordAdapter } from "../src/adapter.js";
+
+/** A minimal normalized event, for driving the internal dispatch seam. */
+function makeEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "msg-1",
+    platform: "discord",
+    sender: { id: "u1" },
+    channel: { id: "c1", type: "group" },
+    text: "hi",
+    receivedAt: 1_700_000_000_000,
+    discord: { guildId: "g1", channelId: "c1", authorId: "u1", messageId: "msg-1" },
+    ...overrides,
+  } as unknown as Parameters<DiscordAdapter["dispatchEvent"]>[0];
+}
 
 describe("DiscordAdapter (T6.1)", () => {
   let adapter: DiscordAdapter;
@@ -55,7 +70,7 @@ describe("DiscordAdapter (T6.1)", () => {
     expect(r.error?.code).toBe("empty_text");
   });
 
-  it("EC-H: onInbound second call replaces handler (verified via private state)", () => {
+  it("EC-H: onInbound second call replaces the previous handler", async () => {
     let firstCalls = 0;
     let secondCalls = 0;
     adapter.onInbound(async () => {
@@ -64,10 +79,42 @@ describe("DiscordAdapter (T6.1)", () => {
     adapter.onInbound(async () => {
       secondCalls += 1;
     });
-    // Can't synthesize a real discord.js Message; the contract is tested
-    // by inspection — the field is private. Counts both stay at 0 here.
+
+    // This used to assert both counters were 0, with a comment conceding "the
+    // contract is tested by inspection". Nothing was tested: 0 and 0 hold
+    // whether onInbound replaces, stacks, or discards. A regression to
+    // `handlers.push(handler)` would have the agent reply TWICE to every
+    // message — double-billing tokens — and this test would still pass.
+    //
+    // `dispatchEvent` is the internal seam that makes it answerable without
+    // synthesizing a discord.js Message.
+    await adapter.dispatchEvent(makeEvent());
+
     expect(firstCalls).toBe(0);
-    expect(secondCalls).toBe(0);
+    expect(secondCalls).toBe(1);
+  });
+
+  it("the unsubscribe from a replaced handler does not silence the live one", async () => {
+    let firstCalls = 0;
+    let secondCalls = 0;
+    const offFirst = adapter.onInbound(async () => {
+      firstCalls += 1;
+    });
+    adapter.onInbound(async () => {
+      secondCalls += 1;
+    });
+
+    offFirst(); // stale
+    await adapter.dispatchEvent(makeEvent());
+
+    expect(firstCalls).toBe(0);
+    expect(secondCalls).toBe(1);
+  });
+
+  it("reports no_handler once the live handler unsubscribes", async () => {
+    const off = adapter.onInbound(async () => {});
+    off();
+    expect(await adapter.dispatchEvent(makeEvent())).toBe("no_handler");
   });
 
   it("disconnect is idempotent on never-connected", async () => {
