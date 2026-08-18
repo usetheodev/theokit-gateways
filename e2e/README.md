@@ -14,6 +14,25 @@ or filtering over the wire; they test **auth reaches the provider**, **our
 payload shape is accepted**, and **a real error maps to the error we claim to
 return**.
 
+## These are integration tests, whatever the folder is called
+
+Worth being exact, because the name claims more than the tests deliver. By the
+pyramid in `rules/testing.md`, integration is "clients against APIs" and E2E is
+"critical flows from the user's point of view". Every suite here constructs **one
+adapter** and drives it against **one real API** — the first definition,
+literally. Check the imports: not one test imports `@theokit/gateway`.
+
+A true end-to-end test would exercise the flow a consumer actually builds: a
+message arrives, the core runs its hooks, a handler replies, and the reply lands
+back on the platform. **No test does that**, against a real platform or a fake
+one. The core — `HookExecutor`, `chunkText`, `chunkByGrapheme` — is covered by
+unit tests only, and `@theokit/gateway` sits in this package's `package.json` as
+a dependency that nothing here imports.
+
+So read a green run as: *every adapter still speaks its platform's current
+protocol*. Do not read it as: *the gateway works for its users*. The second
+claim has no test behind it — see #20.
+
 ---
 
 ## Running
