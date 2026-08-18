@@ -63,11 +63,29 @@ class FakeImap implements IImapClient {
   supportsIdle(): boolean {
     return this.idleEnabled;
   }
+  /**
+   * UIDs the adapter has flagged \Seen on the "server".
+   *
+   * This fake used to model `fetchUnseen()` as draining its queue: fetch once
+   * and the message was gone forever. No IMAP server behaves that way — a
+   * message stays UNSEEN until something sets the flag — and that gap is
+   * precisely why 686 unit tests were green while a bot re-answered its whole
+   * unread inbox on every reconnect (issue #11). A fake that forgets cannot
+   * catch a bug about not remembering.
+   */
+  seen = new Set<number>();
+  markSeenError?: Error;
   // eslint-disable-next-line @typescript-eslint/require-await
   async fetchUnseen(): Promise<FetchedMessage[]> {
-    const out = this.queue;
-    this.queue = [];
-    return out;
+    return this.queue.filter((m) => !this.seen.has(m.uid));
+  }
+  /** One entry per markSeen call — proves batching, not just correctness. */
+  markSeenCalls: number[][] = [];
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async markSeen(uids: readonly number[]): Promise<void> {
+    if (this.markSeenError !== undefined) throw this.markSeenError;
+    this.markSeenCalls.push([...uids]);
+    for (const uid of uids) this.seen.add(uid);
   }
   // eslint-disable-next-line @typescript-eslint/require-await
   async startIdle(onExists: () => void): Promise<void> {
@@ -648,6 +666,111 @@ describe("EmailAdapter", () => {
       });
       const from = smtp.sent[0]?.from;
       expect(from).toEqual({ name: "TheoBot", address: "bot@example.com" });
+      await adapter.disconnect();
+    });
+  });
+
+  describe("durable delivery state (issue #11)", () => {
+    it("delivers a message once across a reconnect", async () => {
+      // THE regression. `seenUids` is in-memory and `disconnect()` clears it,
+      // so the only thing that can stop a redelivery after a restart is a flag
+      // on the server. Without one, a bot with N unread answers all N senders
+      // again every time it reconnects — and it answers by email, which nobody
+      // can recall.
+      const { adapter, imap } = mk();
+      const received: string[] = [];
+      const handler = async (e: { text: string }): Promise<void> => {
+        received.push(e.text);
+      };
+
+      imap.push({
+        uid: 1,
+        source: rfc5322({ from: "alice@x.com", messageId: "m1@x.com" }),
+        headers: new Map(),
+      });
+
+      adapter.onInbound(handler);
+      await adapter.connect();
+      await adapter._drainNow();
+      expect(received).toHaveLength(1);
+
+      await adapter.disconnect();
+      // Re-registering is not ceremony: `disconnect()` clears the handler
+      // (adapter.ts:132), so an app that reconnects has to hand it back. The
+      // first draft of this test skipped this line and passed while the bug was
+      // still present — the redelivery happened, found no handler, and vanished.
+      // A green test that proves the handler was cleared is not a test of
+      // delivery.
+      adapter.onInbound(handler);
+      await adapter.connect();
+      await adapter._drainNow();
+
+      expect(received).toHaveLength(1);
+      await adapter.disconnect();
+    });
+
+    it("flags a dropped own-address message too, so it stops being refetched", async () => {
+      // EC-1 discards these before the handler, but discarding is not the same
+      // as finishing with them: left UNSEEN they are downloaded and re-parsed
+      // on every single drain forever. Most of the 166-message backlog measured
+      // on the live mailbox was exactly this — old probes the adapter kept
+      // reading and throwing away.
+      const { adapter, imap } = mk();
+      imap.push({
+        uid: 7,
+        source: rfc5322({ from: "bot@example.com", messageId: "loop@x.com" }),
+        headers: new Map(),
+      });
+      await adapter.connect();
+      await adapter._drainNow();
+
+      expect(imap.seen.has(7)).toBe(true);
+      expect(await imap.fetchUnseen()).toHaveLength(0);
+      await adapter.disconnect();
+    });
+
+    it("flags a whole drain with ONE server command, not one per message", async () => {
+      // Not a style preference — a measurement. Flagging per message from
+      // inside the serialized dispatch queue put 166 sequential round trips
+      // ahead of every newly-arrived message on the live mailbox, and an
+      // inbound probe waited past 120s to reach the handler. If someone ever
+      // "simplifies" this back to a call per message, this test is what says
+      // why they should not.
+      const { adapter, imap } = mk();
+      for (const uid of [11, 12, 13, 14, 15]) {
+        imap.push({
+          uid,
+          source: rfc5322({ from: "alice@x.com", messageId: `m${uid}@x.com` }),
+          headers: new Map(),
+        });
+      }
+      await adapter.connect();
+      await adapter._drainNow();
+
+      expect(imap.markSeenCalls).toHaveLength(1);
+      expect(imap.markSeenCalls[0]).toEqual([11, 12, 13, 14, 15]);
+      await adapter.disconnect();
+    });
+
+    it("still delivers when the server refuses to set the flag", async () => {
+      // Failing to mark must not cost the message. The worst case is that it
+      // comes back on the next drain, which is today's behaviour and strictly
+      // better than dropping mail a user sent.
+      const { adapter, imap } = mk();
+      imap.markSeenError = new Error("[NOPERM] read-only mailbox");
+      const received: string[] = [];
+      adapter.onInbound(async (e) => {
+        received.push(e.text);
+      });
+      imap.push({
+        uid: 3,
+        source: rfc5322({ from: "alice@x.com", messageId: "m3@x.com" }),
+        headers: new Map(),
+      });
+      await adapter.connect();
+      await adapter._drainNow();
+
+      expect(received).toHaveLength(1);
       await adapter.disconnect();
     });
   });

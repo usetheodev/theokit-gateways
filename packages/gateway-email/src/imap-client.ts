@@ -35,6 +35,23 @@ export interface IImapClient {
   supportsIdle(): boolean;
   /** Fetch all UNSEEN messages once. Used for poll + post-IDLE-event drain. */
   fetchUnseen(): Promise<FetchedMessage[]>;
+  /**
+   * Set `\Seen` on the server for a whole batch, so `fetchUnseen()` stops
+   * returning them.
+   *
+   * The server flag is the only delivery state that survives a restart, which
+   * is what issue #11 turned on: the in-memory UID set is cleared by
+   * `disconnect()`, so without this a reconnect re-delivers the whole unread
+   * backlog to the handler.
+   *
+   * Batched, not per-message, and the reason is measured rather than stylistic.
+   * The first version flagged each message individually from inside the
+   * serialized dispatch queue; against a 166-message backlog on a real mailbox
+   * that put 166 sequential round trips ahead of every newly-arrived message,
+   * and an inbound probe waited past 120s to be delivered. One command per
+   * drain removes that queue entirely.
+   */
+  markSeen(uids: readonly number[]): Promise<void>;
   /** Start IDLE; invoke `onExists` whenever the server pushes a new-message notification. */
   startIdle(onExists: () => void): Promise<void>;
   /** Stop IDLE if running. */
@@ -99,6 +116,14 @@ export class ImapClient implements IImapClient {
       }
     }
     return out;
+  }
+
+  async markSeen(uids: readonly number[]): Promise<void> {
+    if (this.client === undefined || uids.length === 0) return;
+    // `uid: true` is load-bearing — without it imapflow reads these numbers as
+    // sequence numbers, which are positional and shift as the mailbox changes,
+    // so the flags would land on whatever messages happen to sit at those slots.
+    await this.client.messageFlagsAdd({ uid: uids.join(",") }, ["\\Seen"], { uid: true });
   }
 
   async startIdle(onExists: () => void): Promise<void> {
