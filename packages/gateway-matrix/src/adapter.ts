@@ -89,6 +89,19 @@ export class MatrixAdapter extends BasePlatformAdapter {
 
   async disconnect(): Promise<void> {
     if (!this.connected) return;
+    // KNOWN, UNRESOLVED: `stopClient()` aborts the /sync request that is still in
+    // flight, and matrix-js-sdk lets that AbortError escape as an UNHANDLED
+    // rejection — it holds the sync promise internally and exposes no hook to
+    // await or catch it. Node has terminated on unhandled rejections by default
+    // since v15, so an application that calls disconnect() inside a reconnect
+    // loop can be killed by its own clean shutdown.
+    //
+    // The e2e suite filters that one rejection (see e2e/src/setup.ts) so a green
+    // run is not reported as red, which is a test concern. This is the product
+    // concern, and filtering does not answer it. Fixing it properly means either
+    // an upstream change or holding our own AbortController for the sync
+    // request; neither is a one-line change, so it is recorded rather than
+    // quietly patched.
     this.subscription?.unsubscribe();
     this.subscription = undefined;
     this.client?.stopClient();
