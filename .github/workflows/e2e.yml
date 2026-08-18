@@ -24,6 +24,14 @@ on:
         description: "Single platform id (telegram, discord, slack, …). Empty runs all."
         required: false
         type: string
+  # Callable so `release.yml` can gate a publish on the live suites instead of
+  # duplicating them. The suite is defined once, here.
+  workflow_call:
+    inputs:
+      platform:
+        description: "Single platform id. Empty runs all."
+        required: false
+        type: string
 
 permissions:
   contents: read
