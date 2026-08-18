@@ -52,10 +52,30 @@ describe("splitForSlack", () => {
   });
 
   it("EC-4: avoids cutting inside a UTF-16 surrogate pair (emoji)", () => {
-    const prefix = "a".repeat(3998);
+    // The offset is the whole test. At 3998 the emoji occupies indices
+    // 3998-3999, so 3998 + 2 <= 4000 and the cut never falls between the
+    // surrogates — the guard was never exercised, and removing
+    // `surrogateGuard: true` from src/split.ts left this test green while
+    // shipping severed emoji to Slack.
+    //
+    // At 3999 the pair straddles the window edge: index 3999 is the high
+    // surrogate, 4000 the low one, so a naive cut at 4000 splits it. This is the
+    // offset the core test (gateway/tests/text/chunk.test.ts:142) uses, and the
+    // one that distinguishes a guarded chunker from an unguarded one.
+    const prefix = "a".repeat(3999);
     const text = `${prefix}🎉${"b".repeat(100)}`;
     const chunks = splitForSlack(text);
     for (const c of chunks) assertNoLoneSurrogate(c);
+  });
+
+  it("EC-4: the guard is what keeps the pair intact, not the corpus", () => {
+    // Guards the guard. `assertNoLoneSurrogate` passes vacuously on text with no
+    // surrogates at all, so this asserts the emoji actually survives somewhere,
+    // whole, rather than merely never appearing severed.
+    const text = `${"a".repeat(3999)}🎉${"b".repeat(100)}`;
+    const chunks = splitForSlack(text);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toContain("🎉");
   });
 });
 

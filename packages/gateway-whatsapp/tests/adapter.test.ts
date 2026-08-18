@@ -18,6 +18,8 @@ class FakeBackend implements WhatsAppBackend {
   readonly kind = "cloud" as const;
   connectCalls = 0;
   disconnectCalls = 0;
+  /** Lets a test drive the refusal path — a connect that fails must stay retryable. */
+  connectResult = true;
   sends: WhatsAppOutboundMessage[] = [];
   sendResults: WhatsAppSendResult[] = [];
   inboundHandler?: (e: WhatsAppInboundEvent) => Promise<void>;
@@ -25,7 +27,7 @@ class FakeBackend implements WhatsAppBackend {
 
   async connect(): Promise<boolean> {
     this.connectCalls += 1;
-    return true;
+    return this.connectResult;
   }
   async disconnect(): Promise<void> {
     this.disconnectCalls += 1;
@@ -81,12 +83,41 @@ describe("WhatsAppAdapter — Base contract", () => {
   });
 
   it("test_adapter_connect_idempotent", async () => {
+    // This assertion used to read `toBe(2)` under a name promising idempotence,
+    // with a trailing comment claiming "both calls return true successfully" that
+    // nothing asserted. It encoded a MISSING guard as the contract: WhatsApp was
+    // the only adapter without one, so a double connect() opened a second live
+    // session, and the test that should have caught it required the second
+    // session in order to pass. Teams, SMS and Slack all assert exactly once.
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend);
+    const first = await adapter.connect();
+    const second = await adapter.connect();
+    expect(backend.connectCalls).toBe(1);
+    expect(first).toBe(true);
+    expect(second).toBe(true);
+  });
+
+  it("reconnects after an explicit disconnect", async () => {
+    // The guard must be a guard, not a latch: disconnect() has to clear it or a
+    // reconnect silently no-ops and the bot goes deaf with no error anywhere.
     const backend = new FakeBackend();
     const adapter = new WhatsAppAdapter(backend);
     await adapter.connect();
+    await adapter.disconnect();
     await adapter.connect();
     expect(backend.connectCalls).toBe(2);
-    // Idempotent on the adapter side: both calls return true successfully.
+  });
+
+  it("does not latch as connected when the backend refuses", async () => {
+    // A failed connect must stay retryable. Latching on a false return would
+    // make the first network blip permanent.
+    const backend = new FakeBackend();
+    backend.connectResult = false;
+    const adapter = new WhatsAppAdapter(backend);
+    expect(await adapter.connect()).toBe(false);
+    expect(await adapter.connect()).toBe(false);
+    expect(backend.connectCalls).toBe(2);
   });
 });
 
@@ -175,6 +206,47 @@ describe("WhatsAppAdapter — group mention filter (D309 + EC-7)", () => {
     adapter.onInbound(handler);
     await backend.inboundHandler!(makeInbound({ conversationType: "dm", text: "plain dm" }));
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The four format variants above are all POSITIVE. With no negative case, the
+   * only thing constraining the matcher was "must accept these", which an
+   * `includes("5511999999999")` over the whole message trivially satisfies —
+   * and that is what shipped. Collapsing the entire text to digits let unrelated
+   * numbers scattered across a sentence concatenate into the bot's number, so
+   * ordinary group chatter about an order woke the bot on every message.
+   */
+  describe("group mention filter — negative cases", () => {
+    it.each([
+      ["digits from separate words must not concatenate", "order 55 arrived 11, ref 99999-9999 ok"],
+      ["digits scattered across a sentence", "room 5 and 5 have 1 1 999 999 999 9"],
+      ["a different number entirely", "@5511888888888 can you look?"],
+      ["a prefix of the bot number only", "call 5511 later"],
+      ["no digits at all", "does anyone know what happened?"],
+    ])("drops a group message when %s", async (_label, text) => {
+      const backend = new FakeBackend();
+      const adapter = new WhatsAppAdapter(backend, { botPhoneId: "5511999999999" });
+      const handler = vi.fn(async () => {});
+      adapter.onInbound(handler);
+      await backend.inboundHandler!(
+        makeInbound({ conversationType: "group", channelId: "g1", text }),
+      );
+      expect(handler, `text: ${text}`).not.toHaveBeenCalled();
+    });
+
+    it("drops silently when botPhoneId is missing, rather than answering everything", async () => {
+      // The misconfiguration branch had no test at all: every no-botPhoneId test
+      // used a DM, which never reaches the filter. Inverting this branch to
+      // "let everything through" would have been invisible.
+      const backend = new FakeBackend();
+      const adapter = new WhatsAppAdapter(backend, {});
+      const handler = vi.fn(async () => {});
+      adapter.onInbound(handler);
+      await backend.inboundHandler!(
+        makeInbound({ conversationType: "group", channelId: "g1", text: "@5511999999999 hi" }),
+      );
+      expect(handler).not.toHaveBeenCalled();
+    });
   });
 });
 

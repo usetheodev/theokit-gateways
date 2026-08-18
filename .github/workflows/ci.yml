@@ -1,0 +1,82 @@
+name: CI
+
+# The test suite had no CI job at all until 2026-08-17. `release.yml` ran
+# install -> build -> changesets publish, `secret-scan.yml` scanned for
+# credentials, and nothing anywhere invoked `pnpm test`. So the 584 tests could
+# not fail a build, and every package published to npm without the suite ever
+# being evaluated. The pre-commit hook declined to run them on the grounds that
+# "they are cheap in CI" — a rationale that was circular, because CI did not run
+# them either.
+#
+# This workflow closes that. It is the gate `release.yml` depends on: publishing
+# happens on a push to main, and main is only reachable through a PR, which this
+# runs on.
+
+on:
+  push:
+    branches: [main, develop, workspace]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Never cancel on the integration branches — a cancelled run on main or develop
+  # leaves a commit with no verdict, which reads the same as a passing one.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/develop' }}
+
+jobs:
+  verify:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      # Every step is a hard gate: no `continue-on-error`, because a step that
+      # cannot fail the build is a step that is not checking anything.
+      #
+      # Lint first because it needs nothing and reports in seconds. Then BUILD,
+      # then typecheck — that order is not cosmetic. The adapters import
+      # `@theokit/gateway`, whose type declarations are emitted by its build, so
+      # `typecheck` before `build` fails on a clean checkout with "Cannot find
+      # module '@theokit/gateway'". It passes locally either way, because dist/
+      # is already lying around from a previous run. This workflow's very first
+      # execution caught exactly that.
+      - name: Lint and format check
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm -r run typecheck
+
+      - name: Unit and contract tests
+        run: pnpm -r run test
+
+      # Guards this workflow against itself. If someone renames the root `test`
+      # script or drops a package's test script, the suite would silently stop
+      # running and every job above would still be green. This asserts that all
+      # 11 packages still declare a test script.
+      - name: Assert every package still runs tests
+        run: |
+          missing=0
+          for pkg in packages/*/package.json; do
+            if ! node -e "process.exit(require('./$pkg').scripts?.test ? 0 : 1)"; then
+              echo "::error file=$pkg::no \"test\" script — this package is not covered by CI"
+              missing=1
+            fi
+          done
+          exit $missing

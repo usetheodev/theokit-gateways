@@ -33,6 +33,13 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Publishing used to be reachable without the suite ever running: this job
+      # went install -> build -> publish, and no workflow anywhere invoked
+      # `pnpm test`. `ci.yml` now gates the PR into main, but this step is what
+      # makes it impossible for a release to outrun a red suite — a manual
+      # `workflow_dispatch` bypasses the PR gate, and this one it cannot bypass.
+      - name: Test before publishing
+        run: pnpm -r run test
       - name: Create Release Pull Request or Publish
         uses: changesets/action@v1
         with:

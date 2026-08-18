@@ -155,7 +155,25 @@ export class TelegramAdapter extends BasePlatformAdapter {
     }
     const event = normalizeEvent(ctx);
     if (event === undefined) return;
+    await this.dispatchEvent(event);
+  }
+
+  /**
+   * Dispatch a pre-built event to the current handler, honouring EC-H replace
+   * semantics.
+   *
+   * Mirrors the seam `gateway-sms` already exposes. It exists because the EC-H
+   * contract had no honest test without it: a grammy `Context` cannot be
+   * synthesized here, `handler` is private, and the test that claimed to cover
+   * replacement asserted an empty array — true whether onInbound replaces,
+   * stacks, or discards.
+   *
+   * @internal
+   */
+  async dispatchEvent(event: GatewayMessageEvent): Promise<"ok" | "no_handler"> {
+    if (this.handler === undefined) return "no_handler";
     await this.handler(event);
+    return "ok";
   }
 }
 

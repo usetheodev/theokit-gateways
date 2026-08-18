@@ -18,11 +18,45 @@
 
 import { chunkByGrapheme } from "@theokit/gateway";
 
-const PART_PREFIX_RESERVED = 8; // "(99/99) " worst case
+/**
+ * Width of `"(i/total) "` when `i` has as many digits as `total` — the widest
+ * the prefix can get for a given part count. `(99/99) ` is 8, `(100/126) ` is
+ * 10, `(1000/1234) ` is 12.
+ *
+ * This used to be the constant 8, commented `"(99/99) " worst case`. It is the
+ * worst case only below 100 parts; from the hundredth part on, every prefix
+ * overflowed its reservation and each part exceeded the caller's declared cap
+ * by 2 chars, which the provider rejects.
+ */
+function prefixWidthFor(total: number): number {
+  return 2 * String(total).length + 4;
+}
 
 export function splitForSMS(text: string, limit = 1600): string[] {
-  const parts = chunkByGrapheme(text, { limit, partLimit: limit - PART_PREFIX_RESERVED });
-  if (parts.length <= 1) return parts; // short-circuit / single part: skip prefix
-  const total = parts.length;
-  return parts.map((p, i) => `(${i + 1}/${total}) ${p}`);
+  // Chicken and egg: the reservation depends on the part count, and the part
+  // count depends on the reservation. Widening the prefix shrinks the payload,
+  // which can push the count into another digit — so iterate to a fixed point.
+  // It converges fast because the width grows with the LOGARITHM of the count;
+  // the bound is a backstop against a pathological input, not the expected path.
+  let reserved = prefixWidthFor(1);
+  for (let pass = 0; pass < 8; pass += 1) {
+    const partLimit = limit - reserved;
+    if (partLimit <= 0) {
+      throw new RangeError(
+        `limit ${limit} is too small to carry an SMS part: the "(i/N) " prefix alone needs ${reserved} chars`,
+      );
+    }
+    const parts = chunkByGrapheme(text, { limit, partLimit });
+    if (parts.length <= 1) return parts; // short-circuit / single part: skip prefix
+    const needed = prefixWidthFor(parts.length);
+    if (needed <= reserved) {
+      const total = parts.length;
+      return parts.map((p, i) => `(${i + 1}/${total}) ${p}`);
+    }
+    reserved = needed;
+  }
+  /* c8 ignore next 3 -- unreachable: 8 passes cover part counts up to 10^8. */
+  throw new RangeError(
+    `could not settle the "(i/N) " prefix width for a ${text.length}-char message at limit ${limit}`,
+  );
 }

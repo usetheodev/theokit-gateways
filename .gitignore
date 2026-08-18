@@ -9,10 +9,18 @@ coverage/
 .claude/
 architect-output/
 
-# Filled-in environment files. `examples/slack-bot/.env` was committed with real
-# Slack and OpenRouter credentials because nothing here matched it — the example
-# directory was imported wholesale from another checkout. The `.env.example`
-# alongside it is the file that documents the variables, so it stays tracked.
+# Filled-in environment files. A filled-in `.env` once reached this repository
+# with real Slack and OpenRouter credentials, because no rule here matched it.
+# Integration tests read their credentials from an untracked `.env`; CI reads
+# them from repository secrets. Only `.env.example` — placeholders documenting
+# which variables exist — is ever tracked.
 .env
 .env.*
 !.env.example
+
+# SDK runtime state, written by the agent as it runs: agent registry, message
+# transcripts, memory sessions. The same import that carried the `.env` above
+# also left a tracked registry.json holding the absolute path of a developer's
+# home directory in a public repository. Runtime state is per-machine — it
+# never belongs in version control.
+.theokit/

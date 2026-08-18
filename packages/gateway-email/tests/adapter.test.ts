@@ -468,6 +468,36 @@ describe("EmailAdapter", () => {
       expect(got.length).toBe(0);
       await adapter.disconnect();
     });
+
+    it("a stale unsubscribe does not clear the handler that replaced it", async () => {
+      // The sequence that broke: onInbound(A) -> onInbound(B) -> A's unsubscribe.
+      // Without an identity guard, A's closure cleared B and inbound delivery
+      // stopped for good, silently. Eight of the ten adapters guarded against
+      // this; email and teams did not, and no test anywhere ran this order —
+      // both existing unsubscribe tests were subscribe-then-unsubscribe.
+      const { adapter, imap } = mk();
+      await adapter.connect();
+      const first: MessageEvent[] = [];
+      const second: MessageEvent[] = [];
+      const offFirst = adapter.onInbound(async (e) => {
+        first.push(e);
+      });
+      adapter.onInbound(async (e) => {
+        second.push(e);
+      });
+
+      offFirst(); // stale: it belongs to a handler that is no longer installed
+
+      imap.push({
+        uid: 72,
+        source: rfc5322({ from: "alice@x.com", messageId: "stale@x.com" }),
+        headers: new Map(),
+      });
+      await adapter._drainNow();
+      expect(first.length).toBe(0);
+      expect(second.length).toBe(1);
+      await adapter.disconnect();
+    });
   });
 
   describe("sendMessage", () => {
