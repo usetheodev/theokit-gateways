@@ -30,8 +30,14 @@ unit tests only, and `@theokit/gateway` sits in this package's `package.json` as
 a dependency that nothing here imports.
 
 So read a green run as: *every adapter still speaks its platform's current
-protocol*. Do not read it as: *the gateway works for its users*. The second
-claim has no test behind it — see #20.
+protocol*. That is what the per-platform suites prove.
+
+The one exception is `tests/gateway-e2e.test.ts`, which IS end to end and is the
+only file here that imports `@theokit/gateway`: a real person posts, the adapter
+normalises, `GatewayRunner` runs the hook chain, the handler answers through
+`ctx.reply()`, and the reply is read back from the room by the sender. It runs on
+Matrix because `pnpm matrix:up` boots a homeserver in Docker, so it needs no
+credential from anybody and costs nothing.
 
 ---
 
