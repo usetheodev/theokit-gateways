@@ -4,89 +4,75 @@
 // Every README in this repository opens by telling a consumer to write an import. Nothing checked
 // that the names in those imports exist. A published example that does not compile is a first
 // impression, and it is the cheapest way there is to lose a reader who was about to try the thing.
+// Measured 2026-08-20: `gateway-slack`'s README told a reader to import `GatewayMessageEvent`, which
+// is an internal alias inside two OTHER adapters and has never been an export of anything.
 //
 // THE ORACLE IS THE COMPILER, NOT A REGEX OVER `.d.ts` TEXT. Matching names is exactly what fails
 // here: an export can be written in a form a hand-rolled parser does not read, and the parser then
-// reports a real export as missing. Each `import { ... } from "@theokit/..."` found in a tracked
-// markdown file becomes a generated probe; `tsc --noEmit` says which names do not resolve, and each
-// diagnostic is mapped back to the artifact and line that claimed it.
+// reports a real export as missing. Each documented import becomes a generated probe; `tsc --noEmit`
+// says which names do not resolve, and each diagnostic maps back to the artifact and line that
+// claimed it.
 //
-// EACH DOCUMENT IS RESOLVED WHERE ITS READER STANDS. `packages/gateway-slack/README.md` is read by a
-// consumer of that package, who has its peer dependencies — `@theokit/sdk` among them — so its
-// examples are compiled from inside `packages/gateway-slack`. A package cannot resolve its own name
-// that way (there is no self-link in `node_modules`), and repository-level docs belong to no package
-// at all, so both fall back to `integration/`, the one workspace member that declares all eleven
-// gateway packages as dependencies.
+// EVERY SPECIFIER, NOT JUST OURS. The first version matched `@theokit/*` alone, which made an import
+// from any other package invisible to it — including the framework this ecosystem is built on. The
+// sibling repository `theokit-plugins` found ten documented names missing from `theokit` itself
+// while a gate scoped like the first version would have reported all-clear. A gate that cannot see
+// a whole class of import reports an absence it never checked.
 //
-// "COULD NOT CHECK" IS NOT "IS WRONG". A module that fails to RESOLVE (TS2307) says the probe stood
-// in the wrong place; a name that is missing from a module that did resolve (TS2305/TS2724) says the
-// documentation is wrong. The first version conflated them and accused five READMEs of naming types
-// that do not exist, when the truth was that `@theokit/sdk` is not linked into `integration/`. Those
-// are reported apart, and an unresolvable module fails the run as a broken gate (exit 2) rather than
-// as a documentation defect.
+// OUR OWN PACKAGES RESOLVE THROUGH `paths`, NEVER THROUGH A `node_modules` LINK. The two changes
+// above are coupled, and the coupling is the point: once an uninstalled specifier is reported as
+// out-of-scope rather than as a failure, anything that fails to resolve goes quiet. If our own
+// packages resolved through whatever link happened to exist, a dropped dependency would turn OUR
+// drift into a silent skip. Mapping the workspace explicitly means "out of scope" can only ever mean
+// third-party.
 //
-// This reads the PUBLISHED declarations, so `pnpm build` must have run first.
+// "COULD NOT CHECK" IS NOT "IS WRONG". A third-party package this workspace does not install is
+// counted and listed, and does not fail the run — we cannot check it and say so. A name missing from
+// a module that DID resolve is drift, and does. The first version conflated the two and accused five
+// READMEs of naming types that do not exist, when the truth was that `@theokit/sdk` was not linked
+// where the probes stood.
+//
+// This reads the PUBLISHED declarations, so the build must have run first.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { publishedPackages, ROOT } from "./lib/published-entries.mjs";
+import { importsIn, isDocumentation } from "./lib/documented-imports.mjs";
+import { publishedPackages, ROOT, workspacePaths } from "./lib/published-entries.mjs";
 
 const LABEL = "doc-api-drift";
 const PROBE_DIRNAME = ".doc-probes";
 
-/** `import { A, type B } from "@theokit/gateway"` — the shape every README example uses. */
-const IMPORT = /import\s+(?:type\s+)?\{([^}]+)\}\s+from\s+["'](@theokit\/[^"']+)["']/g;
-
-/** Tracked markdown, minus changesets — those describe a release, not an API. */
+/** Tracked markdown that documents an API — see `isDocumentation` for what is deliberately not. */
 function documentationFiles() {
   return execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
     .split("\n")
-    .filter((path) => path.length > 0 && !path.startsWith(".changeset/"));
+    .filter((path) => path.length > 0 && isDocumentation(path));
 }
 
-/** Every documented import, with the artifact and line that claims it. */
-function documentedImports() {
-  const claims = [];
-  for (const file of documentationFiles()) {
-    const text = readFileSync(join(ROOT, file), "utf8");
-    for (const match of text.matchAll(IMPORT)) {
-      const names = match[1]
-        .split(",")
-        .map((name) => name.trim().replace(/^type\s+/, ""))
-        .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name));
-      if (names.length === 0) continue;
-      claims.push({
-        file,
-        line: text.slice(0, match.index).split("\n").length,
-        specifier: match[2],
-        names,
-      });
-    }
-  }
-  return claims;
-}
-
-/** Where a reader of `file` stands: its own package first, then the workspace member that has them all. */
+/** Where a reader of `file` stands, for THIRD-PARTY specifiers: its own package has its peers. */
 function resolutionRoots(file) {
-  const roots = [];
   const owner = /^(packages\/[^/]+)\//.exec(file);
-  if (owner !== null) roots.push(join(ROOT, owner[1]));
-  roots.push(join(ROOT, "integration"));
-  return roots;
+  const roots = owner === null ? [] : [join(ROOT, owner[1])];
+  return [...roots, join(ROOT, "integration"), ROOT];
 }
 
-/** The first root where `specifier` is actually linked, or undefined when none is. */
-function rootResolving(file, specifier) {
+function installedRoot(file, specifier) {
+  // A subpath import resolves through its package's manifest; the package directory is what exists.
+  const pkg = specifier.startsWith("@")
+    ? specifier.split("/").slice(0, 2).join("/")
+    : specifier.split("/")[0];
   return resolutionRoots(file).find((root) =>
-    existsSync(join(root, "node_modules", specifier, "package.json")),
+    existsSync(join(root, "node_modules", pkg, "package.json")),
   );
 }
+
+const WORKSPACE = workspacePaths();
 
 const unbuilt = publishedPackages().filter((pkg) => !pkg.built);
 if (unbuilt.length > 0) {
   console.error(
-    `[${LABEL}] x ${unbuilt.map((pkg) => pkg.name).join(", ")} have no dist/ — run pnpm build`,
+    `[${LABEL}] x ${unbuilt.map((pkg) => pkg.name).join(", ")} publish no declaration — run the build`,
   );
   console.error(
     "  Refusing to report: the names would resolve against declarations that do not exist.",
@@ -94,7 +80,9 @@ if (unbuilt.length > 0) {
   process.exit(2);
 }
 
-const claims = documentedImports();
+const claims = documentationFiles().flatMap((file) =>
+  importsIn(file, readFileSync(join(ROOT, file), "utf8")),
+);
 if (claims.length === 0) {
   // Not a pass. Every README here opens with an import example; finding none means the extraction
   // broke, and reporting green on that is how a gate starts checking nothing while looking healthy.
@@ -104,12 +92,14 @@ if (claims.length === 0) {
   process.exit(2);
 }
 
-const unresolvable = [];
+const outOfScope = [];
 const byRoot = new Map();
 for (const claim of claims) {
-  const root = rootResolving(claim.file, claim.specifier);
+  // Ours always resolves, wherever the probe stands; anything else needs a root that installs it.
+  const root =
+    WORKSPACE[claim.specifier] === undefined ? installedRoot(claim.file, claim.specifier) : ROOT;
   if (root === undefined) {
-    unresolvable.push(claim);
+    outOfScope.push(claim);
     continue;
   }
   if (!byRoot.has(root)) byRoot.set(root, []);
@@ -117,14 +107,13 @@ for (const claim of claims) {
 }
 
 const drifted = [];
-const notChecked = [...unresolvable];
+const notChecked = [];
 
 for (const [root, rootClaims] of byRoot) {
   const probeDir = join(root, PROBE_DIRNAME);
   rmSync(probeDir, { recursive: true, force: true });
   mkdirSync(probeDir, { recursive: true });
 
-  // One probe per claim, so a diagnostic's file name identifies the artifact that made the claim.
   const probes = rootClaims.map((claim, index) => {
     const probe = join(probeDir, `probe-${index}.ts`);
     writeFileSync(
@@ -134,25 +123,34 @@ for (const [root, rootClaims] of byRoot) {
     return { probe, claim };
   });
 
+  writeFileSync(
+    join(probeDir, "tsconfig.json"),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          noEmit: true,
+          strict: true,
+          skipLibCheck: true,
+          target: "es2022",
+          module: "esnext",
+          moduleResolution: "bundler",
+          baseUrl: root,
+          paths: WORKSPACE,
+        },
+        files: probes.map((entry) => entry.probe),
+      },
+      null,
+      2,
+    ),
+  );
+
   let output = "";
   try {
-    execFileSync(
-      "npx",
-      [
-        "tsc",
-        "--noEmit",
-        "--strict",
-        "--target",
-        "es2022",
-        "--module",
-        "esnext",
-        "--moduleResolution",
-        "bundler",
-        "--skipLibCheck",
-        ...probes.map((entry) => entry.probe),
-      ],
-      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-    );
+    execFileSync("npx", ["tsc", "--project", join(probeDir, "tsconfig.json")], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   } catch (error) {
     // A failed invocation is not a clean compile.
     if (typeof error.status !== "number") {
@@ -172,7 +170,9 @@ for (const [root, rootClaims] of byRoot) {
     const entry = probes[Number(match[1])];
     if (entry === undefined) continue;
     if (match[2] === "TS2307") {
-      notChecked.push(entry.claim); // the module did not resolve — the probe stood wrong, not the doc
+      // The module did not resolve where the probe stood. For one of ours that is a broken gate,
+      // never a documentation defect — and it must be loud, or our own drift goes quiet.
+      notChecked.push({ ...entry.claim, ours: WORKSPACE[entry.claim.specifier] !== undefined });
       continue;
     }
     const name = /has no exported member(?: named)? '([^']+)'/.exec(match[3])?.[1];
@@ -183,22 +183,26 @@ for (const [root, rootClaims] of byRoot) {
 }
 
 const checkedNames = claims
-  .filter((claim) => !notChecked.includes(claim))
+  .filter((claim) => !outOfScope.includes(claim))
   .reduce((total, claim) => total + claim.names.length, 0);
 
-if (notChecked.length > 0) {
-  console.error(
-    `[${LABEL}] x ${notChecked.length} import(s) could not be checked — module unresolvable:`,
+if (outOfScope.length > 0) {
+  console.log(
+    `[${LABEL}] ${outOfScope.length} import(s) NOT checked — package not installed here:`,
   );
+  for (const claim of outOfScope) {
+    console.log(`      ${claim.file}:${claim.line} — ${claim.specifier}`);
+  }
+  console.log("  Third-party and absent from this workspace, so the names could not be verified.");
+}
+
+if (notChecked.length > 0) {
+  console.error(`\n[${LABEL}] x ${notChecked.length} probe(s) could not resolve their module:`);
   for (const claim of notChecked) {
     console.error(
-      `      ${claim.file}:${claim.line} — ${claim.specifier} is not linked from any candidate root`,
+      `      ${claim.file}:${claim.line} — ${claim.specifier}${claim.ours ? "  (OURS — the gate is broken, not the doc)" : ""}`,
     );
   }
-  console.error(
-    "  This is a gap in the gate, not a defect in the documentation. Link the package or teach",
-  );
-  console.error("  the gate where a reader of that document stands.");
 }
 
 if (drifted.length > 0) {
@@ -209,10 +213,11 @@ if (drifted.length > 0) {
   console.error("\n  A reader who copies one of these gets code that does not compile.");
 }
 
-if (drifted.length > 0 || notChecked.length > 0) process.exit(drifted.length > 0 ? 1 : 2);
+if (drifted.length > 0) process.exit(1);
+if (notChecked.length > 0) process.exit(2);
 
 console.log(
-  `[${LABEL}] PASS — ${checkedNames} documented name(s) across ${claims.length} import(s) in ${
+  `\n[${LABEL}] PASS — ${checkedNames} documented name(s) across ${claims.length - outOfScope.length} import(s) in ${
     new Set(claims.map((claim) => claim.file)).size
   } file(s) all resolve.`,
 );

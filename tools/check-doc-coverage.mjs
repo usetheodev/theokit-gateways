@@ -115,23 +115,33 @@ function inspect(declPath) {
   return { documented, undocumented, swallowed };
 }
 
+// PER ENTRY, not per package. This read `dist/index.d.ts` by name until 2026-08-20; the sibling
+// repository `theokit-plugins` has eleven packages publishing eighteen declaration entries, and that
+// version would have measured eleven of them while printing a percentage that reads as coverage of
+// the whole published surface. Every package here declares exactly one `.` today, so the number is
+// unchanged — but it is now derived from the manifest rather than assumed.
+//
+// The ESM declaration is what a reader's editor opens; the CJS sibling is the same content emitted
+// twice, so counting both would double every total without measuring anything new.
 const rows = [];
 let failedToRead = 0;
 
 for (const pkg of publishedPackages()) {
   if (!pkg.built) {
-    console.error(`[${LABEL}] x ${pkg.name}: no dist/ — run pnpm build`);
+    console.error(`[${LABEL}] x ${pkg.name}: publishes no declaration — run the build`);
     failedToRead += 1;
     continue;
   }
-  const result = inspect(join(pkg.dir, "dist", "index.d.ts"));
-  if (result === undefined) {
-    console.error(`[${LABEL}] x ${pkg.name}: the compiler could not read the published entry`);
-    failedToRead += 1;
-    continue;
+  for (const entry of pkg.rows.filter((row) => row.decl.endsWith(".d.ts"))) {
+    const result = inspect(entry.decl);
+    if (result === undefined) {
+      console.error(`[${LABEL}] x ${entry.specifier}: the compiler could not read the entry`);
+      failedToRead += 1;
+      continue;
+    }
+    const total = result.documented.length + result.undocumented.length + result.swallowed.length;
+    rows.push({ name: entry.specifier, total, ...result });
   }
-  const total = result.documented.length + result.undocumented.length + result.swallowed.length;
-  rows.push({ name: pkg.name, total, ...result });
 }
 
 if (failedToRead > 0) {
