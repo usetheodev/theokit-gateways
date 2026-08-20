@@ -9,7 +9,8 @@
   },
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "build": "pnpm -r run build",
+    "build": "pnpm -r run build && node tools/repair-dts-imports.mjs",
+    "quality:dts-typechecks": "node tools/check-dts-typechecks.mjs",
     "test": "pnpm -r run test",
     "integration": "pnpm --filter @theokit/gateway-integration integration",
     "integration:readiness": "pnpm --filter @theokit/gateway-integration readiness",

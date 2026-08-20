@@ -60,6 +60,13 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The typecheck below reads our SOURCE, which was green on all eleven packages while five of
+      # them published a declaration that does not compile (#29). `skipLibCheck` is on in most
+      # consumer projects, so the damage only surfaces in someone else's type-aware lint. This asks
+      # the compiler about the artifact we actually ship.
+      - name: Published declarations compile without skipLibCheck
+        run: pnpm quality:dts-typechecks
+
       - name: Typecheck
         run: pnpm -r run typecheck
 
