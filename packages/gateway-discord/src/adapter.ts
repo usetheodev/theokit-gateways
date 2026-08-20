@@ -35,6 +35,13 @@ export const DEFAULT_DISCORD_INTENTS: ReadonlyArray<GatewayIntentBits> = [
   GatewayIntentBits.DirectMessageReactions,
 ];
 
+/**
+ * Discord gateway adapter — holds a websocket the bot opens, so inbound needs no public URL.
+ *
+ * Reading message CONTENT requires the privileged `MessageContent` intent, which must be enabled in
+ * the Discord developer portal as well as requested here; without it every `event.text` arrives
+ * empty and nothing in the API says why. `DEFAULT_DISCORD_INTENTS` requests it.
+ */
 export class DiscordAdapter extends BasePlatformAdapter {
   readonly platform = "discord" as const;
   private readonly client: Client;

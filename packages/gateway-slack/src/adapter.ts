@@ -30,6 +30,7 @@ import { mapSlackError } from "./errors.js";
 import { type BoltMessageBody, normalizeSlackEvent } from "./normalize.js";
 import { splitForSlack } from "./split.js";
 
+/** Construction options for {@link SlackAdapter}. */
 export interface SlackAdapterOptions {
   /** xoxb-... Bot User OAuth token. */
   readonly botToken: string;
@@ -43,6 +44,13 @@ export interface SlackAdapterOptions {
   readonly logLevel?: "debug" | "info" | "warn" | "error";
 }
 
+/**
+ * Slack gateway adapter over Socket Mode — the bot dials out, so inbound needs no public URL.
+ *
+ * Needs BOTH tokens: a bot token (`xoxb-`) to act, and an app-level token (`xapp-`, scope
+ * `connections:write`) to open the socket. In public channels it answers only when mentioned unless
+ * `requireMention` is set to `false`.
+ */
 export class SlackAdapter extends BasePlatformAdapter {
   readonly platform = "slack" as const;
   private app: App | undefined;

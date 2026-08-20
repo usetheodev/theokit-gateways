@@ -67,6 +67,12 @@ jobs:
       - name: Published declarations compile without skipLibCheck
         run: pnpm quality:dts-typechecks
 
+      # Three questions the source typecheck cannot answer: do the imports our READMEs tell a reader
+      # to write actually resolve, is any docblock stranded above another (attaching to nothing), and
+      # does every published export carry documentation a consumer's editor will render.
+      - name: API documentation
+        run: pnpm quality:docs
+
       - name: Typecheck
         run: pnpm -r run typecheck
 

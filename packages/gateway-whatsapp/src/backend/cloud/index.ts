@@ -33,6 +33,14 @@ export interface WhatsAppCloudBackendOptions {
   readonly fetch?: typeof fetch;
 }
 
+/**
+ * WhatsApp backend over Meta's official Cloud API.
+ *
+ * The supported path: Meta dials in with webhook deliveries, so inbound needs a publicly reachable
+ * HTTPS endpoint registered in the Meta console. Outbound is a plain HTTPS call and works anywhere.
+ * Business-initiated messages outside the 24-hour customer service window must use an approved
+ * template — a plain text send to a cold contact is rejected by the platform, not by this code.
+ */
 export class WhatsAppCloudBackend implements WhatsAppBackend {
   readonly kind = "cloud" as const;
   private readonly client: WhatsAppCloudClient;

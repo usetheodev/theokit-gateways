@@ -42,6 +42,14 @@ interface PendingSend {
 const DEFAULT_CONNECT_TIMEOUT_MS = 120_000;
 const DEFAULT_SEND_TIMEOUT_MS = 30_000;
 
+/**
+ * WhatsApp backend driving `whatsapp-web.js` in a child process.
+ *
+ * Unofficial: it automates a WhatsApp Web session, which Meta's terms do not sanction and which can
+ * get a number banned. It exists for a personal number that has no Cloud API access. The browser
+ * runs out-of-process behind a PID lock so a crashed or orphaned bridge cannot be left holding the
+ * session.
+ */
 export class WhatsAppWebBackend implements WhatsAppBackend {
   readonly kind = "web" as const;
   private handle?: BridgeHandle;

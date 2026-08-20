@@ -24,6 +24,7 @@ export interface WebhookServerOptions {
   readonly app?: Express;
 }
 
+/** A started HTTP listener, with the handle needed to shut it down again. */
 export interface WebhookServer {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -104,6 +105,13 @@ function headerOf(req: Request, name: string): string | undefined {
   return Array.isArray(v) ? v.join(",") : v;
 }
 
+/**
+ * Build the HTTP listener that receives LINE's webhook deliveries.
+ *
+ * LINE dials in, so this endpoint must be reachable over public HTTPS and registered in the LINE
+ * console — unlike the connection-based adapters, inbound cannot work behind a firewall. `express`
+ * is loaded lazily, so a project that only sends messages never pays for it.
+ */
 export async function createWebhookServer(opts: WebhookServerOptions): Promise<WebhookServer> {
   const expressMod = await loadExpress();
   const app: Express = opts.app ?? expressMod.default();
