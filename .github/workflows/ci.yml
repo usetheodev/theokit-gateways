@@ -67,6 +67,13 @@ jobs:
       - name: Published declarations compile without skipLibCheck
         run: pnpm quality:dts-typechecks
 
+      # The declaration and the runtime are emitted by two different tsup pipelines from one source,
+      # and #29 was those pipelines disagreeing. A value declared but absent from the `.js` compiles
+      # and is `undefined` when the program runs — past every other gate, into a consumer's
+      # production. Nothing else here can see it.
+      - name: Declarations and runtime export the same values
+        run: pnpm quality:dts-parity
+
       # Three questions the source typecheck cannot answer: do the imports our READMEs tell a reader
       # to write actually resolve, is any docblock stranded above another (attaching to nothing), and
       # does every published export carry documentation a consumer's editor will render.

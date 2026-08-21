@@ -11,6 +11,7 @@
   "scripts": {
     "build": "pnpm -r run build && node tools/repair-dts-imports.mjs",
     "quality:dts-typechecks": "node tools/check-dts-typechecks.mjs",
+    "quality:dts-parity": "node tools/check-dts-export-parity.mjs",
     "quality:doc-api": "node tools/check-doc-api-drift.mjs",
     "quality:doc-orphans": "node tools/check-orphan-docblocks.mjs",
     "quality:doc-coverage": "node tools/check-doc-coverage.mjs",
