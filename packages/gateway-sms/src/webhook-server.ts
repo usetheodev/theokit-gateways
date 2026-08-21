@@ -31,6 +31,7 @@ export interface WebhookServerOptions {
   readonly app?: Express;
 }
 
+/** A started HTTP listener, with the handle needed to shut it down again. */
 export interface WebhookServer {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -63,6 +64,13 @@ function buildSignatureContext(req: Request): SignatureContext {
   return { headers, rawBody, url };
 }
 
+/**
+ * Build the HTTP listener that receives the provider's inbound-SMS callbacks.
+ *
+ * The provider dials in, so this endpoint must be reachable over public HTTPS and registered in the
+ * provider console — inbound cannot work behind a firewall. `express` is loaded lazily, so a project
+ * that only sends messages never pays for it.
+ */
 export async function createWebhookServer(opts: WebhookServerOptions): Promise<WebhookServer> {
   const expressMod = await loadExpress();
   const app: Express = opts.app ?? expressMod.default();

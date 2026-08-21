@@ -60,6 +60,26 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # The typecheck below reads our SOURCE, which was green on all eleven packages while five of
+      # them published a declaration that does not compile (#29). `skipLibCheck` is on in most
+      # consumer projects, so the damage only surfaces in someone else's type-aware lint. This asks
+      # the compiler about the artifact we actually ship.
+      - name: Published declarations compile without skipLibCheck
+        run: pnpm quality:dts-typechecks
+
+      # The declaration and the runtime are emitted by two different tsup pipelines from one source,
+      # and #29 was those pipelines disagreeing. A value declared but absent from the `.js` compiles
+      # and is `undefined` when the program runs — past every other gate, into a consumer's
+      # production. Nothing else here can see it.
+      - name: Declarations and runtime export the same values
+        run: pnpm quality:dts-parity
+
+      # Three questions the source typecheck cannot answer: do the imports our READMEs tell a reader
+      # to write actually resolve, is any docblock stranded above another (attaching to nothing), and
+      # does every published export carry documentation a consumer's editor will render.
+      - name: API documentation
+        run: pnpm quality:docs
+
       - name: Typecheck
         run: pnpm -r run typecheck
 
@@ -73,7 +93,11 @@ jobs:
       - name: Assert every package still runs tests
         run: |
           missing=0
-          for pkg in packages/*/package.json; do
+          # `tools/` is a workspace member too, and its gates now carry the logic that decides
+          # whether the other checks mean anything. It sits outside `packages/*`, so it would have
+          # been the one member able to lose its test script unnoticed — which is the exact hole
+          # this assertion exists to close.
+          for pkg in packages/*/package.json tools/package.json; do
             if ! node -e "process.exit(require('./$pkg').scripts?.test ? 0 : 1)"; then
               echo "::error file=$pkg::no \"test\" script — this package is not covered by CI"
               missing=1

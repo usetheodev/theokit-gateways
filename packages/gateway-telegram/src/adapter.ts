@@ -25,6 +25,13 @@ export interface TelegramAdapterOptions {
   readonly allowedUsers?: ReadonlyArray<string>;
 }
 
+/**
+ * Telegram gateway adapter — long-polls for updates, so inbound needs no public URL.
+ *
+ * Two platform rules shape what this can do, and neither has a workaround: a bot cannot enumerate
+ * the chats it belongs to, and it cannot speak into a chat that has not spoken to it first. A chat
+ * id therefore has to come from an inbound message, never from the token.
+ */
 export class TelegramAdapter extends BasePlatformAdapter {
   readonly platform = "telegram" as const;
   private readonly bot: Bot;

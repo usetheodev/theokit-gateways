@@ -38,6 +38,12 @@ function cloudErrorCode(
   return "unknown";
 }
 
+/**
+ * Map a Cloud API HTTP failure into the canonical `{ code, message }` payload.
+ *
+ * Takes the status alongside the body because Meta returns the same envelope shape for very
+ * different faults, and the status is what separates a rejected payload from an expired token.
+ */
 export function mapWhatsAppCloudError(status: number, body: unknown): ErrorPayload {
   const parsed = (body !== null && typeof body === "object" ? body : {}) as MetaErrorBody;
   const errCode = parsed.error?.code ?? 0;
@@ -48,6 +54,12 @@ export function mapWhatsAppCloudError(status: number, body: unknown): ErrorPaylo
   return { code, message: errMsg };
 }
 
+/**
+ * Map an error string from the `whatsapp-web.js` bridge into the canonical payload.
+ *
+ * The bridge speaks over IPC and can only send text, so this is the boundary where a line of stderr
+ * becomes a structured error. `undefined` maps to an `unknown` code rather than throwing.
+ */
 export function mapWhatsAppWebError(ipcError: string | undefined): ErrorPayload {
   const msg = ipcError ?? "unknown bridge error";
   if (msg.includes("AUTHENTICATION") || msg.includes("UNAUTHORIZED")) {
