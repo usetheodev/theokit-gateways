@@ -32,6 +32,96 @@ on:
         description: "Single platform id. Empty runs all."
         required: false
         type: string
+    # Declared one by one instead of taking `secrets: inherit` from the caller.
+    # `inherit` hands the called workflow EVERY secret the caller holds — including
+    # the registry credential the release job uses, which these live tests must
+    # never see. Listing them keeps the blast radius of this workflow to the
+    # platform credentials it actually talks to.
+    secrets:
+      DISCORD_BOT_TOKEN:
+        required: false
+      DISCORD_TEST_CHANNEL_ID:
+        required: false
+      DISCORD_TEST_SENDER_TOKEN:
+        required: false
+      EMAIL_ADDRESS:
+        required: false
+      EMAIL_IMAP_HOST:
+        required: false
+      EMAIL_PASSWORD:
+        required: false
+      EMAIL_SMTP_HOST:
+        required: false
+      EMAIL_TEST_RECIPIENT:
+        required: false
+      EMAIL_TEST_SENDER_ADDRESS:
+        required: false
+      EMAIL_TEST_SENDER_PASSWORD:
+        required: false
+      EMAIL_TEST_SENDER_SMTP_HOST:
+        required: false
+      LINE_CHANNEL_ACCESS_TOKEN:
+        required: false
+      LINE_CHANNEL_SECRET:
+        required: false
+      LINE_TEST_USER_ID:
+        required: false
+      MATRIX_ACCESS_TOKEN:
+        required: false
+      MATRIX_HOMESERVER_URL:
+        required: false
+      MATRIX_TEST_ROOM_ID:
+        required: false
+      MATRIX_USER_ID:
+        required: false
+      MATTERMOST_ACCESS_TOKEN:
+        required: false
+      MATTERMOST_BASE_URL:
+        required: false
+      MATTERMOST_TEST_CHANNEL_ID:
+        required: false
+      SLACK_APP_TOKEN:
+        required: false
+      SLACK_BOT_TOKEN:
+        required: false
+      SLACK_TEST_CHANNEL_ID:
+        required: false
+      SLACK_TEST_USER_TOKEN:
+        required: false
+      SMS_ACCOUNT_ID:
+        required: false
+      SMS_AUTH_TOKEN:
+        required: false
+      SMS_BACKEND:
+        required: false
+      SMS_FROM_NUMBER:
+        required: false
+      SMS_TEST_RECIPIENT:
+        required: false
+      TEAMS_CLIENT_ID:
+        required: false
+      TEAMS_CLIENT_SECRET:
+        required: false
+      TEAMS_TENANT_ID:
+        required: false
+      TEAMS_TEST_CONVERSATION_ID:
+        required: false
+      TELEGRAM_API_HASH:
+        required: false
+      TELEGRAM_API_ID:
+        required: false
+      TELEGRAM_BOT_TOKEN:
+        required: false
+      TELEGRAM_TEST_CHAT_ID:
+        required: false
+      TELEGRAM_TEST_SESSION:
+        required: false
+      WHATSAPP_ACCESS_TOKEN:
+        required: false
+      WHATSAPP_PHONE_NUMBER_ID:
+        required: false
+      WHATSAPP_TEST_RECIPIENT:
+        required: false
 
 permissions:
   contents: read
@@ -57,13 +147,17 @@ jobs:
     # and risks a green run that tested nothing.
     environment: e2e
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: 9.15.0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        # No `version:` here on purpose. The action reads `packageManager` from
+        # package.json, which is already the single authority on the pnpm version.
+        # Pinning it a second time in this file creates two places to update, and
+        # once they disagree action-setup aborts with ERR_PNPM_BAD_PM_VERSION.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: '.nvmrc'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       # The adapters import @theokit/gateway, whose types come from its build.
@@ -140,13 +234,18 @@ jobs:
         run: pnpm --filter @theokit/gateway-integration mattermost:up
 
       - name: Live suites
+        # The dispatch input reaches the shell as an environment variable, never as
+        # text spliced into the script. `${{ inputs.x }}` inside a run block is
+        # substituted before bash sees the line, so a value containing a shell
+        # metacharacter executes as code with whatever secrets this step holds.
         run: |
-          if [ -n "${{ inputs.platform }}" ]; then
-            pnpm --filter @theokit/gateway-integration exec vitest run "tests/${{ inputs.platform }}"
+          if [ -n "$PLATFORM" ]; then
+            pnpm --filter @theokit/gateway-integration exec vitest run "tests/$PLATFORM"
           else
             pnpm --filter @theokit/gateway-integration integration
           fi
         env:
+          PLATFORM: ${{ inputs.platform }}
           INTEGRATION_LIVE: "1"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
