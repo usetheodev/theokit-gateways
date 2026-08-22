@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The live suite now proves the core's capabilities instead of one of them. It drove exactly one of
+  `@theokit/gateway`'s ten runtime exports — `GatewayRunner` — and nothing anywhere said so; the
+  six defects fixed in this same cycle all sat in code no live test touched, two of them fatal to
+  the process. `tests/gateway-e2e.test.ts` gains seven round trips against a real homeserver: a
+  handler that throws and a next message still answered, `on_error` receiving that failure,
+  `post_outbound` receiving the platform's real acknowledgement, `runner.command()` slash dispatch,
+  `stop()` draining a handler still running when it is called, a stopped runner refusing to restart,
+  and `DeliveryRouter` on the outbound-only path no other test reaches. Each was checked by breaking
+  the capability and confirming the test goes red — the `post_outbound` and slash-dispatch tests
+  were run against a deliberately mutated core (#38, #39, #41)
+
+- A capability-parity gate in `integration/tests/readiness.test.ts`: every runtime export of
+  `@theokit/gateway` must be named by a live test or listed with a written reason, and an exemption
+  naming an export that no longer exists fails too. It is the sibling of the platform/suite parity
+  check already in that file, pointed at the core. Today's four exemptions are all one reason —
+  `chunkText`, `chunkByGrapheme`, `defaultStrategy` and `SessionRouter` are pure functions, so a
+  live run would prove nothing a unit test does not
+
 - Three cross-adapter invariants in `packages/gateway/tests/lint/adapter-contract.test.ts`, which
   reads all ten adapters and fails when one stops matching its nine siblings: every adapter names a
   throwing handler as the handler's failure, none launches a user callback with a bare `void`, and

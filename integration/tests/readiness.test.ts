@@ -151,4 +151,77 @@ describe("live-test readiness", () => {
       expect(dirs, `PLATFORMS has "${id}" but tests/${id}/ does not exist`).toContain(id);
     }
   });
+  it("drives every runtime export of the core, or says in writing why not", async () => {
+    // The gap this file exists for, pointed at the core instead of at a
+    // platform. Measured 2026-08-22: of the ten runtime exports of
+    // `@theokit/gateway`, this package drove exactly ONE — `GatewayRunner` —
+    // and nothing anywhere said so. `DeliveryRouter` had never been sent
+    // through a real adapter; `post_outbound` had no production caller at all
+    // (#38) and so could not have been observed live even in principle.
+    //
+    // A symbol is covered when the live suite NAMES it. That is a weaker claim
+    // than "asserts its behaviour", and it is deliberately the claim being
+    // made: this gate catches an export nobody thought about, not a weak test.
+    // Whether the test is any good is what the mutation checks are for.
+    //
+    // Comments are stripped first. A gate that greps raw source is answered by
+    // prose — including, embarrassingly, by the comment explaining the gate.
+    // That exact mistake was made once in this repository and caught only
+    // because the check was run against a deliberately broken input.
+    const NOT_DRIVEN_LIVE: Record<string, string> = {
+      chunkText:
+        "pure function, no I/O. The splitting it performs IS proven over the wire, by the five adapter suites that send past their platform's cap",
+      chunkByGrapheme: "pure function, same reasoning as chunkText",
+      defaultStrategy: "pure function: event -> agent id string. No transport can disagree with it",
+      SessionRouter: "delegates to a strategy function; nothing crosses a network",
+      BasePlatformAdapter:
+        "abstract base — every adapter suite in this package drives a concrete subclass of it",
+      HookExecutor:
+        "constructed by GatewayRunner rather than by a consumer; its three fire points are each driven by tests/gateway-e2e.test.ts",
+      GatewayConfigurationError:
+        "raised from bad options at construction, before any transport exists to test against",
+    };
+
+    const { readdir, readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+
+    const core = (await import("@theokit/gateway")) as Record<string, unknown>;
+    const exports = Object.keys(core).filter((name) => name !== "default");
+    expect(exports.length, "no runtime exports found — was the core built?").toBeGreaterThan(0);
+
+    const here = new URL(".", import.meta.url).pathname;
+    const entries = await readdir(here, { recursive: true, withFileTypes: true });
+    const sources: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+      sources.push(await readFile(join(entry.parentPath, entry.name), "utf8"));
+    }
+    const code = sources
+      .join("\n")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+
+    const undriven = exports.filter(
+      (name) => NOT_DRIVEN_LIVE[name] === undefined && !new RegExp(`\\b${name}\\b`).test(code),
+    );
+    expect(
+      undriven,
+      undriven.length === 0
+        ? ""
+        : `these core exports have no live coverage and no recorded reason:\n${undriven
+            .map((n) => `  ${n}`)
+            .join(
+              "\n",
+            )}\nDrive them from tests/gateway-e2e.test.ts, or add them to NOT_DRIVEN_LIVE with why.`,
+    ).toEqual([]);
+
+    // The other direction, which the sibling directory check learned to make:
+    // an exemption for a symbol that no longer exists is a reason nobody can
+    // check, sitting where a reader will read it as current.
+    const stale = Object.keys(NOT_DRIVEN_LIVE).filter((name) => !exports.includes(name));
+    expect(
+      stale,
+      `NOT_DRIVEN_LIVE names exports the core no longer has: ${stale.join(", ")}`,
+    ).toEqual([]);
+  });
 });

@@ -16,28 +16,46 @@ return**.
 
 ## These are integration tests, whatever the folder is called
 
-Worth being exact, because the name claims more than the tests deliver. By the
-pyramid in `rules/testing.md`, integration is "clients against APIs" and E2E is
-"critical flows from the user's point of view". Every suite here constructs **one
-adapter** and drives it against **one real API** — the first definition,
-literally. Check the imports: not one test imports `@theokit/gateway`.
+Worth being exact, because the name claims more than most of the tests deliver.
+By the pyramid in `rules/testing.md`, integration is "clients against APIs" and
+E2E is "critical flows from the user's point of view". Every **per-platform**
+suite here constructs **one adapter** and drives it against **one real API** —
+the first definition, literally. None of them imports `@theokit/gateway`.
 
-A true end-to-end test would exercise the flow a consumer actually builds: a
-message arrives, the core runs its hooks, a handler replies, and the reply lands
-back on the platform. **No test does that**, against a real platform or a fake
-one. The core — `HookExecutor`, `chunkText`, `chunkByGrapheme` — is covered by
-unit tests only, and `@theokit/gateway` sits in this package's `package.json` as
-a dependency that nothing here imports.
+So read a green per-platform run as: *every adapter still speaks its platform's
+current protocol*. That is what those suites prove, and it is not the same thing
+as proving the gateway works.
 
-So read a green run as: *every adapter still speaks its platform's current
-protocol*. That is what the per-platform suites prove.
+`tests/gateway-e2e.test.ts` is the one that earns the other name, and the only
+file here that imports `@theokit/gateway`. It drives the flow a consumer actually
+builds — a real person posts, the adapter normalises, `GatewayRunner` runs the
+hook chain, the handler answers through `ctx.reply()`, and the reply is read back
+from the room by the sender. It runs on Matrix because `pnpm matrix:up` boots a
+homeserver in Docker, so it needs no credential from anybody and costs nothing.
 
-The one exception is `tests/gateway-e2e.test.ts`, which IS end to end and is the
-only file here that imports `@theokit/gateway`: a real person posts, the adapter
-normalises, `GatewayRunner` runs the hook chain, the handler answers through
-`ctx.reply()`, and the reply is read back from the room by the sender. It runs on
-Matrix because `pnpm matrix:up` boots a homeserver in Docker, so it needs no
-credential from anybody and costs nothing.
+### Which core capabilities are proven live
+
+The e2e suite drives, over a real homeserver: the full inbound→handler→reply
+round trip; a `pre_inbound` hook observing, and a second one blocking with a
+message that reaches the room; a handler that **throws**, after which the next
+message is still answered; `on_error` receiving that failure; `post_outbound`
+receiving the platform's real acknowledgement; `runner.command()` slash dispatch;
+`stop()` draining a handler still running when it is called; a stopped runner
+refusing to restart; and `DeliveryRouter` delivering on the outbound-only path
+that never begins with an inbound event.
+
+What is deliberately **not** driven live is written down rather than left to be
+noticed: `readiness.test.ts` fails when a runtime export of `@theokit/gateway`
+is neither named by a live test nor listed with a reason. Today the reasons are
+all the same one — `chunkText`, `chunkByGrapheme`, `defaultStrategy` and
+`SessionRouter` are pure functions, so a live run would prove nothing a unit test
+does not. (The *splitting* they perform is still proven over the wire, by the
+five adapter suites that send past their platform's cap.)
+
+That gate exists because the honest number was invisible: measured 2026-08-22,
+this package drove **one** of the core's ten runtime exports, and nothing said so.
+`post_outbound` could not have been observed live even in principle — it had no
+production caller at all until #38.
 
 ---
 
