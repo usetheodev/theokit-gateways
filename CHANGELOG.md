@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Two peer gateways were cloned into the read-only study zone to inform the WhatsApp work:
+  `openclaw/openclaw` (Apache-2.0) and `NousResearch/hermes-agent`. What was learned is recorded as
+  a finding with citations, not as code — both remain third-party material and nothing was copied
+  from either. The one thing that changed our code came from measuring our own: the Cloud API error
+  mapper matched none of Meta's real codes (#46)
+
 - The live integration suite no longer receives the npm publish credential. `Release` called it
   with `secrets: inherit`, which passes every secret the caller holds; the 42 platform secrets are
   now declared and passed one by one (#33)

@@ -27,12 +27,46 @@ export class WhatsAppConnectTimeoutError extends Error {
   }
 }
 
+/**
+ * Meta's published error codes, by consequence for the caller.
+ *
+ * These are six-digit codes, and the mapper used to test `errCode === 130 || errCode === 131`
+ * — a condition no Cloud API response can satisfy. The rate-limit branch was dead, every real
+ * throttle arrived as `invalid_request`, and a consumer's backoff never fired (#46). The unit
+ * test that claimed to cover it passed on the HTTP status while feeding a fabricated code.
+ *
+ * Numbers verified against Meta's error-code table rather than recalled.
+ */
+const RATE_LIMIT_CODES = new Set([
+  4, // the app reached its API call rate limit
+  80007, // the WhatsApp Business Account reached its rate limit
+  130429, // Cloud API message throughput reached
+]);
+const UNDELIVERABLE_CODES = new Set([
+  130403, // the business has blocked this user
+  131026, // no WhatsApp account, terms not accepted, or an outdated client
+]);
+/** More than 24h since the recipient last replied. Remedy: resend as a template. */
+const SESSION_WINDOW_EXPIRED_CODE = 131047;
+
 function cloudErrorCode(
   status: number,
   errCode: number,
-): "auth_failed" | "rate_limit" | "invalid_request" | "server_error" | "unknown" {
+):
+  | "auth_failed"
+  | "rate_limit"
+  | "invalid_request"
+  | "session_window_expired"
+  | "undeliverable"
+  | "server_error"
+  | "unknown" {
   if (errCode === 190 || status === 401) return "auth_failed";
-  if (errCode === 130 || errCode === 131 || status === 429) return "rate_limit";
+  if (RATE_LIMIT_CODES.has(errCode) || status === 429) return "rate_limit";
+  // Ordered before the generic 400 branch: all three arrive as HTTP 400, and the
+  // specific code is the only thing separating "fix your payload" from "send a
+  // template" and from "this recipient will never receive it".
+  if (errCode === SESSION_WINDOW_EXPIRED_CODE) return "session_window_expired";
+  if (UNDELIVERABLE_CODES.has(errCode)) return "undeliverable";
   if (status === 400 || errCode === 100) return "invalid_request";
   if (status >= 500) return "server_error";
   return "unknown";
@@ -51,6 +85,14 @@ export function mapWhatsAppCloudError(status: number, body: unknown): ErrorPaylo
   const code = cloudErrorCode(status, errCode);
   if (code === "auth_failed") return { code, message: `Bearer token rejected: ${errMsg}` };
   if (code === "rate_limit") return { code, message: `Throttled: ${errMsg}` };
+  if (code === "session_window_expired") {
+    // The remedy travels with the error. A caller reading only the code knows to
+    // switch to a template; a human reading a log should not have to look it up.
+    return {
+      code,
+      message: `Outside the 24-hour service window — send an approved template instead: ${errMsg}`,
+    };
+  }
   return { code, message: errMsg };
 }
 
