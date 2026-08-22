@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Three cross-adapter invariants in `packages/gateway/tests/lint/adapter-contract.test.ts`, which
+  reads all ten adapters and fails when one stops matching its nine siblings: every adapter names a
+  throwing handler as the handler's failure, none launches a user callback with a bare `void`, and
+  the empty-text check precedes the transport-state check. Each was run against a deliberately
+  reverted adapter to confirm it fires rather than passes vacuously — a check that earned its keep
+  immediately, since the first version of the third invariant passed against the reverted adapter
+  by matching its own explanatory comment instead of the code. All three strip comments before
+  asking (#41, #42)
+
 - `Workflow Lint`, a CI gate running actionlint and zizmor over `.github/workflows/`, so the
   pipeline's own conventions are checked by a machine rather than by whoever reads the diff (#33)
 - The integration package's offline logic now runs on every pull request, not nightly. The modules
@@ -30,6 +39,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Node pinned to 22.12.0 and pnpm to 10.34.1, resolved from `.nvmrc` and `packageManager` (#33)
 
 ### Fixed
+
+- A hardening sweep over the runner and all ten adapters closed six defects, each measured against
+  the running code before it was filed and re-measured after the fix. Two were fatal to the process:
+  a message whose handler threw ended the bot on Teams and on WhatsApp's web backend. The others
+  were a runner that could not be stopped after a restart, a `stop()` that held the process open for
+  its whole drain window, a documented public hook point with no caller, and one adapter answering a
+  different error code than the other nine. Per-package detail is in the changesets; what belongs
+  here is that the sweep happened and what it now costs to regress — see the invariants added above
+  (#37, #38, #39, #41, #42)
 
 - The DTS repair no longer leaves scratch files inside a published package. It asks the compiler
   where a type comes from by writing a one-line `.dts-probe-*.ts` into the package, compiling it,
