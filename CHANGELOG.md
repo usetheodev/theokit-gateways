@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/code-quality` now audits something. `code-quality-languages.txt` shipped empty, and an empty
+  file means no language is checked — so the gate returned `PASS` with `languages_audited: []`, a
+  green that verified nothing. TypeScript is enabled against the root manifest, and the gate now
+  reports D1–D4 clean across the workspace and D5 skipped with its reason (no dependency-cruiser
+  config), which is the honest shape of a partial audit
+
 - Two peer gateways were cloned into the read-only study zone to inform the WhatsApp work:
   `openclaw/openclaw` (Apache-2.0) and `NousResearch/hermes-agent`. What was learned is recorded as
   a finding with citations, not as code — both remain third-party material and nothing was copied
