@@ -32,5 +32,12 @@
     "@changesets/cli": "^2.31.0",
     "@types/node": "^22.10.0",
     "typescript": "^5.8.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bufferutil",
+      "esbuild",
+      "utf-8-validate"
+    ]
   }
 }
