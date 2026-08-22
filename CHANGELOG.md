@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Workflow Lint`, a CI gate running actionlint and zizmor over `.github/workflows/`, so the
   pipeline's own conventions are checked by a machine rather than by whoever reads the diff (#33)
+- The integration package's offline logic now runs on every pull request, not nightly. The modules
+  deciding whether a webhook delivery may write to `.env`, which binary the capture script executes
+  and how a value reaches `.env` are covered by 43 tests behind `test:unit` — a script name
+  `pnpm -r run test` cannot reach, so the invariant that keeps live tests off pull requests is
+  untouched (#35)
 
 ### Changed
 
@@ -26,6 +31,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The `e2e` environment, which holds every platform credential, is restricted to the `develop` and
+  `main` branches. It had no protection rule and no branch policy at all, so any workflow on any
+  branch could read all 16 secrets — the environment was giving the grouping of a vault with the
+  access control of a plain repository secret (#36)
+- `pnpm capture:line` verifies LINE's HMAC signature before parsing a delivery, and rejects an
+  unsigned one with 401. It served a public tunnel URL, answered 200 to everything and took
+  `source.userId` from whatever arrived, while `LINE_CHANNEL_SECRET` sat unused in the same `.env`;
+  a third party who found the URL could have written a forged id to disk (#35)
+- `pnpm capture:line` no longer downloads `cloudflared`. It fetched the binary from
+  `releases/latest`, made it executable and ran it with the exit code of `curl` as the only check —
+  on the machine holding all ten platforms' credentials, in a repository that pins its actions by
+  commit SHA. It now requires one installed by a package manager, which verified its signature.
+  This also retires the hard-coded `linux-amd64` asset and a cached binary nothing revalidated (#35)
+- Telegram inbound's MTProto session is no longer wired into CI. The decision to leave that suite
+  uncovered was documented in three places and enforced by none: the workflow declared
+  `TELEGRAM_TEST_SESSION` and piped it into both steps, so the only barrier was nobody having
+  filled the secret in. An MTProto session is full access to a Telegram account, not a scoped
+  token (#36)
 - A `workflow_dispatch` input reached the shell as text spliced into a command line, in the step
   holding every platform credential. It is now passed as an environment variable (#33)
 - Every GitHub Action is pinned to a commit SHA rather than a movable tag, so the code that runs
