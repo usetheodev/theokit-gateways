@@ -464,3 +464,18 @@ describe("SlackAdapter — teardown races connect (#31)", () => {
     expect(stopMock).toHaveBeenCalledOnce();
   });
 });
+
+describe("SlackAdapter — sendMessage guard order", () => {
+  it("reports empty text as empty_text even before the adapter is connected", async () => {
+    // The contract states it without a condition: empty text returns `empty_text`. Slack checked
+    // the connection first, so the same call that answered `empty_text` on the other nine adapters
+    // answered `not_connected` here — and code branching on the code to tell a caller's bad input
+    // from an unavailable transport took the wrong branch on exactly one platform (#42).
+    const adapter = new SlackAdapter({ botToken: "xoxb-t", appToken: "xapp-t" });
+
+    const r = await adapter.sendMessage({ channel: { id: "c", type: "dm" }, text: "" });
+
+    expect(r.ok).toBe(false);
+    expect(r.error?.code).toBe("empty_text");
+  });
+});

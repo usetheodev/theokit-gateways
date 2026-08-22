@@ -173,13 +173,18 @@ export class SlackAdapter extends BasePlatformAdapter {
   }
 
   override async sendMessage(out: OutboundMessage): Promise<SendResult> {
+    // Input first, transport second — the order the other nine adapters use and the one the
+    // contract states without a condition. Checking the connection first made the same empty-text
+    // call answer `not_connected` here and `empty_text` everywhere else, so a caller branching on
+    // the code to separate bad input from an unavailable transport took the wrong branch on exactly
+    // one platform (#42).
+    if (out.text.length === 0) {
+      return { ok: false, error: { code: "empty_text", message: "text is empty" } };
+    }
     // EC-6: also gate on `connected` — `this.app` is set synchronously before
     // `app.start()` completes, so a send in-between would otherwise leak through.
     if (this.app === undefined || !this.connected) {
       return { ok: false, error: { code: "not_connected", message: "adapter not connected" } };
-    }
-    if (out.text.length === 0) {
-      return { ok: false, error: { code: "empty_text", message: "text is empty" } };
     }
 
     let lastId: string | undefined;

@@ -71,6 +71,37 @@ async function adapterPackageSources(): Promise<Array<{ pkg: string; source: str
   return out;
 }
 
+/**
+ * The source with comments removed.
+ *
+ * A gate that greps raw source is answered by prose. The first draft of the `empty_text` invariant
+ * below passed against a deliberately reverted adapter, because the window it read was filled by
+ * the comment explaining the very rule it was checking — the vacuous-gate failure this file's
+ * header already warns about, reproduced by the file itself. Everything these invariants assert is
+ * about code, so comments are removed before asking.
+ */
+function withoutComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+/**
+ * Why `sendMessage` fails the empty-text-first rule, or `undefined` when it does not.
+ *
+ * Positions are compared in the method's own code, comments removed, so the check answers to what
+ * the adapter does rather than to what a comment near it says.
+ */
+function emptyTextGuardVerdict(source: string): string | undefined {
+  const code = withoutComments(source);
+  const start = code.indexOf("sendMessage(out: OutboundMessage)");
+  if (start === -1) return undefined;
+  const body = code.slice(start, start + 800);
+  const emptyAt = body.indexOf("empty_text");
+  const guardAt = body.search(/this\.connected|this\.\w+ === undefined/);
+  if (emptyAt === -1) return "no empty_text guard";
+  if (guardAt !== -1 && guardAt < emptyAt) return "state guard precedes empty_text";
+  return undefined;
+}
+
 describe("cross-adapter contract", () => {
   it("finds every adapter package", async () => {
     // If this drops to a handful, the glob broke and the assertions below became
@@ -114,7 +145,7 @@ describe("cross-adapter contract", () => {
     for (const { pkg, source } of await adapterPackageSources()) {
       // `gateway-email` serialises dispatch through a queue and names it "dispatch error"; the
       // guarantee — contained, logged, delivery continues — is the same one.
-      if (!/handler threw|dispatch error/.test(source)) offenders.push(pkg);
+      if (!/handler threw|dispatch error/.test(withoutComments(source))) offenders.push(pkg);
     }
     expect(offenders).toEqual([]);
   });
@@ -125,11 +156,23 @@ describe("cross-adapter contract", () => {
     // discarded promise at a platform boundary must carry its own `.catch`.
     const offenders: string[] = [];
     for (const { pkg, source } of await adapterPackageSources()) {
-      for (const statement of source.matchAll(/\bvoid\s+this\.[\s\S]{0,600}?;/g)) {
+      for (const statement of withoutComments(source).matchAll(/\bvoid\s+this\.[\s\S]{0,600}?;/g)) {
         if (!statement[0].includes(".catch("))
           offenders.push(`${pkg}: ${statement[0].slice(0, 60)}`);
       }
     }
+    expect(offenders).toEqual([]);
+  });
+  it("checks empty text before anything else in sendMessage", async () => {
+    // The contract states it without a condition: empty text returns `empty_text`. Slack checked
+    // the connection first, so one adapter answered `not_connected` to the call that answered
+    // `empty_text` on the other nine — and code branching on the code to separate a caller's bad
+    // input from an unavailable transport took the wrong branch on exactly one platform (#42).
+    // Input first, transport second, is also what rules/error-handling.md § 2 asks for.
+    const offenders = (await adapterSources())
+      .map(({ pkg, source }) => ({ pkg, verdict: emptyTextGuardVerdict(source) }))
+      .filter((row) => row.verdict !== undefined)
+      .map((row) => `${row.pkg}: ${row.verdict}`);
     expect(offenders).toEqual([]);
   });
 });
