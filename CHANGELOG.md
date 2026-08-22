@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The DTS repair no longer leaves scratch files inside a published package. It asks the compiler
+  where a type comes from by writing a one-line `.dts-probe-*.ts` into the package, compiling it,
+  and deleting it — but the delete sat after the compile step rather than in a `finally`, and the
+  compile step could end the run outright via `process.exit`, which does not unwind the stack. A
+  probe from a process that no longer existed was found untracked in `packages/gateway-whatsapp/`,
+  one `git add -A` away from being committed to a public repository. The compile step now throws
+  and a single handler turns it into the same exit code, so every cleanup on the way out runs; a
+  hard kill leaves nothing behind that the next run does not sweep first; and `.gitignore` matches
+  the pattern, so a leftover cannot be committed even then (#40)
+
 - The live suite can no longer pass a release gate while testing nothing. A skipped suite is as
   green as a passing one, and `Integration (live)` gates publication, so a secret that was deleted,
   renamed or emptied would silently turn its platform off. `INTEGRATION_REQUIRE_PLATFORMS` now
