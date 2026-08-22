@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BACKLOG.md` — the maintenance registry this repository governs itself with, plus the routing
+  table and domain specialist that make an item resolvable. The routing table shipped as the `theo`
+  ecosystem's eight domains, none of which name anything here, so every item filed would have been
+  refused as unroutable; it is now derived from this project. `integration` and `tools` were added
+  by hand — `pnpm-workspace.yaml` declares them but the detector globs `packages/*` and does not
+  reach them. First item: **packages/gateway-whatsapp:** backlog B-001 — measure what the
+  whatsapp-web.js backend costs, and give it a rival
+
 - A fail-closed sender allowlist for WhatsApp (`allowedSenders`). The package had no sender filter:
   `shouldDropGroupMessage` fires only for groups with `requireMention`, so any stranger's direct
   message reached the handler, and from there whatever agent is behind it. Absent and empty are
