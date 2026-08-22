@@ -48,6 +48,29 @@ async function adapterSources(): Promise<Array<{ pkg: string; source: string }>>
   return out.sort((a, b) => a.pkg.localeCompare(b.pkg));
 }
 
+/**
+ * Every `.ts` under an adapter package's `src/`, concatenated per package.
+ *
+ * `adapterSources()` reads `src/adapter.ts` alone, which is where most of the contract lives. It is
+ * not where all of it lives: `gateway-whatsapp` puts its inbound boundary in `src/backend/web` and
+ * `src/backend/cloud`, so an invariant checked only against `adapter.ts` would report it as an
+ * offender for code it does have, one directory over.
+ */
+async function adapterPackageSources(): Promise<Array<{ pkg: string; source: string }>> {
+  const out: Array<{ pkg: string; source: string }> = [];
+  for (const { pkg } of await adapterSources()) {
+    const root = join(PACKAGES_DIR, pkg, "src");
+    const files = await readdir(root, { recursive: true, withFileTypes: true });
+    const parts: string[] = [];
+    for (const file of files) {
+      if (!file.isFile() || !file.name.endsWith(".ts")) continue;
+      parts.push(await readFile(join(file.parentPath, file.name), "utf8"));
+    }
+    out.push({ pkg, source: parts.join("\n") });
+  }
+  return out;
+}
+
 describe("cross-adapter contract", () => {
   it("finds every adapter package", async () => {
     // If this drops to a handful, the glob broke and the assertions below became
@@ -78,6 +101,34 @@ describe("cross-adapter contract", () => {
       if (connectBody.length === 0) continue;
       const head = connectBody.slice(0, 400);
       if (!/if\s*\(\s*(?:this\.connected|!?this\.\w+)\b/.test(head)) offenders.push(pkg);
+    }
+    expect(offenders).toEqual([]);
+  });
+  it("names a throwing handler as the handler's failure, in every adapter", async () => {
+    // A handler is user code and may throw. Two adapters discarded that rejection with `void`, and
+    // under Node 22's default an unhandled rejection ends the process: one message killed the bot
+    // on Teams and on WhatsApp-web. Two more contained it but reported it as a platform error
+    // ("client error", "bot error"), sending anyone debugging their own handler to discord.js and
+    // grammy. Eight of ten already logged it correctly; the divergence is what this catches (#41).
+    const offenders: string[] = [];
+    for (const { pkg, source } of await adapterPackageSources()) {
+      // `gateway-email` serialises dispatch through a queue and names it "dispatch error"; the
+      // guarantee — contained, logged, delivery continues — is the same one.
+      if (!/handler threw|dispatch error/.test(source)) offenders.push(pkg);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("never launches a user callback with a bare `void`", async () => {
+    // `void promise` reads as "I am not waiting". What it tells the runtime is "I am not handling
+    // the error", and that is the exact line that took the process down in two adapters. A
+    // discarded promise at a platform boundary must carry its own `.catch`.
+    const offenders: string[] = [];
+    for (const { pkg, source } of await adapterPackageSources()) {
+      for (const statement of source.matchAll(/\bvoid\s+this\.[\s\S]{0,600}?;/g)) {
+        if (!statement[0].includes(".catch("))
+          offenders.push(`${pkg}: ${statement[0].slice(0, 60)}`);
+      }
     }
     expect(offenders).toEqual([]);
   });

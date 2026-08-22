@@ -172,9 +172,19 @@ export class DiscordAdapter extends BasePlatformAdapter {
    *
    * @internal
    */
-  async dispatchEvent(event: GatewayMessageEvent): Promise<"ok" | "no_handler"> {
+  async dispatchEvent(event: GatewayMessageEvent): Promise<"ok" | "no_handler" | "handler_threw"> {
     if (this.handler === undefined) return "no_handler";
-    await this.handler(event);
+    try {
+      await this.handler(event);
+    } catch (err) {
+      // Left uncaught, the rejection escaped into the platform's own error channel and was reported
+      // as a client error — so a bug in the consumer's handler read as a fault in the platform
+      // library, sending whoever debugged it to the wrong repository (#41). A handler is user code:
+      // its failure is named as such, and delivery continues.
+      const m = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[discord] handler threw: ${m}\n`);
+      return "handler_threw";
+    }
     return "ok";
   }
 }

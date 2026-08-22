@@ -200,7 +200,14 @@ export class WhatsAppWebBackend implements WhatsAppBackend {
       backend: "web",
       raw: event,
     };
-    void this.inboundHandler(normalized);
+    // The bridge's stdout listener is synchronous and does not await this, so the promise has to be
+    // terminated here. `void` alone left the rejection unhandled, and under Node 22's default that
+    // ends the process — one message with a throwing handler killed the bot (#41). A handler is
+    // user code; its failure is contained and named, and the bridge keeps delivering.
+    void this.inboundHandler(normalized).catch((err: unknown) => {
+      const m = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[whatsapp-web] handler threw: ${m}\n`);
+    });
   }
 
   private handleSendAck(event: Extract<IpcEvent, { event: "send_ack" }>): void {
@@ -217,11 +224,15 @@ export class WhatsAppWebBackend implements WhatsAppBackend {
 
   private handleStatus(event: Extract<IpcEvent, { event: "status" }>): void {
     if (this.statusHandler === undefined) return;
+    // Same boundary as handleMessage: nothing awaits this, so an unhandled rejection here is fatal.
     void this.statusHandler({
       wamid: event.msgId,
       status: event.status,
       recipient: event.recipient,
       timestamp: event.timestamp || Date.now(),
+    }).catch((err: unknown) => {
+      const m = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[whatsapp-web] status handler threw: ${m}\n`);
     });
   }
 

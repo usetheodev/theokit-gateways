@@ -205,3 +205,82 @@ describe("WhatsAppWebBackend — send + IPC dispatch", () => {
     await backend.disconnect();
   });
 });
+
+describe("WhatsAppWebBackend — a throwing handler", () => {
+  /** A connected backend fed by a fake bridge, ready to receive IPC lines. */
+  async function connected() {
+    const { handle, child } = makeHandle();
+    const backend = new WhatsAppWebBackend({
+      sessionId: "test",
+      spawnFactory: () => handle,
+      connectTimeoutMs: 500,
+    });
+    const connecting = backend.connect();
+    await new Promise((r) => setTimeout(r, 10));
+    feed(child, '{"event":"ready","botPhone":"5511999999999"}\n');
+    await connecting;
+    return { backend, child };
+  }
+
+  const MESSAGE_LINE =
+    '{"event":"message","msgId":"m1","from":"5511888888888","chatId":"c1","body":"hi","timestamp":1,"isGroup":false}\n';
+
+  it("contains an inbound handler that throws, instead of taking the process down", async () => {
+    // `void this.inboundHandler(normalized)` discarded the rejection. Under Node 22's default an
+    // unhandled rejection ends the process, so one message with a throwing handler killed the bot
+    // — measured against this backend through the same fake bridge these tests use (#41).
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const { backend, child } = await connected();
+    backend.onInbound(async () => {
+      throw new Error("user handler blew up");
+    });
+
+    feed(child, MESSAGE_LINE);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const written = stderr.mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("[whatsapp-web] handler threw: user handler blew up");
+    await backend.disconnect();
+    stderr.mockRestore();
+  });
+
+  it("keeps delivering after an inbound handler throws", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const { backend, child } = await connected();
+    const seen: string[] = [];
+    backend.onInbound(async (event) => {
+      seen.push(event.text);
+      throw new Error("user handler blew up");
+    });
+
+    feed(child, MESSAGE_LINE);
+    await new Promise((r) => setTimeout(r, 10));
+    feed(child, MESSAGE_LINE.replace('"body":"hi"', '"body":"second"'));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(seen).toEqual(["hi", "second"]);
+    await backend.disconnect();
+    stderr.mockRestore();
+  });
+
+  it("contains a status-receipt handler that throws", async () => {
+    // Same shape, same `void`, one method further down — and a delivery receipt is exactly the kind
+    // of event a user handler writes to a database from, which is where the throws come from.
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const { backend, child } = await connected();
+    backend.onStatusReceipt(async () => {
+      throw new Error("receipt handler blew up");
+    });
+
+    feed(
+      child,
+      '{"event":"status","msgId":"m1","status":"delivered","recipient":"5511888888888","timestamp":1}\n',
+    );
+    await new Promise((r) => setTimeout(r, 10));
+
+    const written = stderr.mock.calls.map((c) => String(c[0])).join("");
+    expect(written).toContain("[whatsapp-web] status handler threw: receipt handler blew up");
+    await backend.disconnect();
+    stderr.mockRestore();
+  });
+});
