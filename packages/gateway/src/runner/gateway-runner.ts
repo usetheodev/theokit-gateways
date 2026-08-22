@@ -148,10 +148,23 @@ export class GatewayRunner {
 
     const drainMs = this.opts.drainTimeoutMs ?? DEFAULT_DRAIN_MS;
     if (this.inflight.size > 0) {
-      await Promise.race([
-        Promise.all([...this.inflight]).then(() => undefined),
-        new Promise<void>((r) => setTimeout(r, drainMs)),
-      ]);
+      // The loser of the race has to be cancelled explicitly. `Promise.race`
+      // settles on the first branch and abandons the other, but an abandoned
+      // `setTimeout` is still a scheduled timer, and a scheduled timer keeps
+      // Node's event loop alive: `stop()` returned in 0ms while the process
+      // only exited `drainMs` later, so a bot stopping on SIGINT hung for the
+      // whole drain window before dying (#37).
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          Promise.all([...this.inflight]).then(() => undefined),
+          new Promise<void>((r) => {
+            timer = setTimeout(r, drainMs);
+          }),
+        ]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
     }
 
     await Promise.all(

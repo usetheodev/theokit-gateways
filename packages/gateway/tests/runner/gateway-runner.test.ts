@@ -192,6 +192,38 @@ describe("GatewayRunner (T1.3)", () => {
     expect(a.connected).toBe(false);
   });
 
+  it("stop leaves no pending drain timer once the drain wins the race", async () => {
+    // A timer that outlives `stop()` keeps Node's event loop alive, so a bot that
+    // stops on SIGINT hangs for the whole drainTimeoutMs before the process exits.
+    // Counting timers is what distinguishes "stop() returned" from "stop() cleaned
+    // up" — the two looked identical until the process refused to exit (#37).
+    vi.useFakeTimers();
+    try {
+      const a = new MockAdapter("telegram");
+      let release: (() => void) | undefined;
+      const held = new Promise<void>((r) => {
+        release = r;
+      });
+      const runner = new GatewayRunner({
+        adapters: [a],
+        handler: async () => {
+          await held;
+        },
+      });
+      await runner.start();
+      // Not awaited: the handler must still be in flight when stop() runs, which
+      // is the only branch that arms the drain timer.
+      void a.emit(tg());
+      const stopP = runner.stop();
+      release?.();
+      await stopP;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("EC-F: handler error logs are redacted", async () => {
     const writes: string[] = [];
     const stderr = vi
