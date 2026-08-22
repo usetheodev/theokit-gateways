@@ -49,22 +49,23 @@ own quality gates.
 
 ## Index
 
-2 items — **Open** 2 · **In flight** 0 · **Closed** 0
+2 items — **Open** 1 · **In flight** 0 · **Closed** 1
 
-### Open (2)
+### Open (1)
 
 | Item | Title | Status | Severity |
 |---|---|---|---|
 | [`B-001`](#b-001--measure-what-the-whatsapp-webjs-backend-costs-and-give-it-a-rival----) | Measure what the whatsapp-web.js backend costs, and give it a rival | `triaged` | — |
-| [`B-002`](#b-002--the-whatsapp-webjs-bridge-cannot-start-at-all----) | The whatsapp-web.js bridge cannot start at all | `triaged` | — |
 
 ### In flight (0)
 
 _None._
 
-### Closed (0)
+### Closed (1)
 
-_None._
+| Item | Title | Status | Severity |
+|---|---|---|---|
+| [`B-002`](#b-002--the-whatsapp-webjs-bridge-cannot-start-at-all---x) | The whatsapp-web.js bridge cannot start at all | `shipped` | — |
 
 <!-- BACKLOG-INDEX:END -->
 
@@ -87,7 +88,7 @@ dod:
 
 > Registered 2026-08-22 by `/backlog-item` (slug: `whatsapp-baileys-backend`).
 
-## B-002 — The whatsapp-web.js bridge cannot start at all   [ ]
+## B-002 — The whatsapp-web.js bridge cannot start at all   [x]
 
 domain: theokit-gateways
 repo: packages/gateway-whatsapp
@@ -95,7 +96,7 @@ suggested_mode: bug
 source: discover-evolve
 evidence: `packages/gateway-whatsapp/src/bridge/whatsapp-web-bridge.mjs:33` takes `LocalAuth` off the module namespace, but `whatsapp-web.js@1.34.7` exports it only on the default — so it is `undefined` and line 46 dies with `TypeError: LocalAuth is not a constructor`, 1011 ms into startup. Failing test: `packages/gateway-whatsapp/tests/bridge-starts.test.ts`. Full measurement: `.claude/knowledge-base/discoveries/opportunities/whatsapp-baileys-backend-opportunity.md` § Corner 1.
 why_now: found while measuring B-001. The `web` backend ships in a published package and cannot start; no test executes the bridge script, so 132 green tests sat over it. A second, independent blocker: `package.json` omits `puppeteer` from `pnpm.onlyBuiltDependencies`, so no browser is ever downloaded.
-status: triaged
+status: shipped
 dod:
   - `tests/bridge-starts.test.ts` passes, and keeps running in CI without a browser or a phone
   - the `try/catch` around the dynamic import no longer reports a present-but-mismatched package as "not installed"

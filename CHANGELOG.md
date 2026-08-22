@@ -101,10 +101,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because nothing ever executed the script: every test injects a fake child process, and the live
   suite excludes the backend by declaration — 132 green tests over a backend that cannot start. A
   second, independent blocker sits behind it: `puppeteer` is absent from
-  `pnpm.onlyBuiltDependencies`, so no browser is ever downloaded. Fixed (B-002): the API is read
-  off the default export, and a present-but-incompatible package now reports which binding it is
-  missing instead of crashing. The browser gap remains, but is now reported through the bridge's
-  own protocol with the command that fixes it, rather than surfacing as a connect timeout
+  `pnpm.onlyBuiltDependencies`, so no browser is ever downloaded. Fixed (B-002), and the fix
+  uncovered two more defects behind it: the bridge could not be **found** from the published
+  package — the path walk was written for the source tree and landed one directory above the
+  package in the flat bundle — and every failure surfaced as a 120-second timeout, because
+  `connect()` raced only the ready promise and wrote the bridge's own diagnosis to stderr before
+  dropping it. All three are closed, each with a test that goes red when that fix alone is
+  reverted. The browser gap remains and is now reported with Chrome's install command rather than
+  crashed on
 
 - A hardening sweep over the runner and all ten adapters closed six defects, each measured against
   the running code before it was filed and re-measured after the fix. Two were fatal to the process:
