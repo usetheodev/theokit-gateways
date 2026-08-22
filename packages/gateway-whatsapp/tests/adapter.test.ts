@@ -53,6 +53,11 @@ class FakeBackend implements WhatsAppBackend {
       this.statusHandler = undefined;
     };
   }
+
+  /** Test helper: deliver one inbound event the way a real backend would. */
+  async emitInbound(event: WhatsAppInboundEvent): Promise<void> {
+    await this.inboundHandler?.(event);
+  }
 }
 
 function makeInbound(overrides: Partial<WhatsAppInboundEvent> = {}): WhatsAppInboundEvent {
@@ -292,4 +297,87 @@ describe("digitsOnly normalizer (EC-7)", () => {
   it("strips dashes", () => expect(digitsOnly("99999-9999")).toBe("999999999"));
   it("strips parens + space", () => expect(digitsOnly("(11) 99999-9999")).toBe("11999999999"));
   it("strips letters", () => expect(digitsOnly("@5511hi")).toBe("5511"));
+});
+
+describe("WhatsAppAdapter — sender allowlist", () => {
+  /** An inbound DM from `from`, reusing the fixture the rest of the file uses. */
+  function inboundFrom(from: string, text = "hi"): WhatsAppInboundEvent {
+    return makeInbound({ fromPhone: from, channelId: from, text });
+  }
+
+  it("delivers nothing when the configured allowlist does not name the sender", async () => {
+    // Without this the package had no sender filter at all: shouldDropGroupMessage
+    // fires only for groups with requireMention, so a stranger's DM went straight
+    // to the handler — and from there to an agent holding tools.
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend, { allowedSenders: "5511999999999" });
+    const seen: string[] = [];
+    adapter.onInbound(async (event) => void seen.push(event.text));
+
+    await backend.emitInbound(inboundFrom("5511000000000@s.whatsapp.net", "from a stranger"));
+
+    expect(seen).toEqual([]);
+    stderr.mockRestore();
+  });
+
+  it("says which sender it refused, instead of dropping in silence", async () => {
+    // A silent drop is indistinguishable from a broken gateway. The first thing an
+    // operator does with a mistyped allowlist is wonder why the bot went mute.
+    const writes: string[] = [];
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        writes.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+        return true;
+      });
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend, { allowedSenders: "5511999999999" });
+    adapter.onInbound(async () => {});
+
+    await backend.emitInbound(inboundFrom("5511000000000@s.whatsapp.net"));
+
+    expect(writes.join("")).toContain("5511000000000");
+    stderr.mockRestore();
+  });
+
+  it("delivers to a listed sender however their id is written", async () => {
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend, { allowedSenders: "+55 11 99999-9999" });
+    const seen: string[] = [];
+    adapter.onInbound(async (event) => void seen.push(event.text));
+
+    await backend.emitInbound(inboundFrom("5511999999999:7@s.whatsapp.net", "allowed"));
+
+    expect(seen).toEqual(["allowed"]);
+  });
+
+  it("refuses everyone when the allowlist is configured but empty", async () => {
+    // Fail-closed. Configuring an empty list is a decision, and the decision it
+    // expresses is "nobody yet".
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend, { allowedSenders: "" });
+    const seen: string[] = [];
+    adapter.onInbound(async (event) => void seen.push(event.text));
+
+    await backend.emitInbound(inboundFrom("5511999999999@s.whatsapp.net"));
+
+    expect(seen).toEqual([]);
+    stderr.mockRestore();
+  });
+
+  it("leaves delivery untouched when no allowlist is configured at all", async () => {
+    // Not the same as an empty one. Absent means the operator has not adopted the
+    // filter, and turning it on by default would mute every existing deployment —
+    // a breaking change that belongs to its own decision, not to this one.
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend);
+    const seen: string[] = [];
+    adapter.onInbound(async (event) => void seen.push(event.text));
+
+    await backend.emitInbound(inboundFrom("5511000000000@s.whatsapp.net", "unfiltered"));
+
+    expect(seen).toEqual(["unfiltered"]);
+  });
 });

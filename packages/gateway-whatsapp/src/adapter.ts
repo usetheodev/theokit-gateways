@@ -17,6 +17,7 @@ import {
   type WhatsAppMessageEvent,
 } from "@theokit/gateway";
 
+import { isSenderAllowed, parseAllowedSenders } from "./allowlist.js";
 import type {
   WhatsAppBackend,
   WhatsAppInboundEvent,
@@ -103,6 +104,8 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   private readonly backendImpl: WhatsAppBackend;
   private readonly requireMention: boolean;
   private readonly botPhoneId: string;
+  /** `undefined` = no allowlist configured; a set = configured, and enforced fail-closed. */
+  private readonly allowedSenders: ReadonlySet<string> | undefined;
   /** Mirrors the sibling adapters: guards connect() against opening a second session. */
   private connected = false;
   private handler?: (event: GatewayMessageEvent) => Promise<void>;
@@ -114,12 +117,17 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   /** Construct from a pre-built backend (used by the static factories + tests). */
   constructor(
     backendImpl: WhatsAppBackend,
-    opts: { requireMention?: boolean; botPhoneId?: string } = {},
+    opts: { requireMention?: boolean; botPhoneId?: string; allowedSenders?: string } = {},
   ) {
     super();
     this.backendImpl = backendImpl;
     this.requireMention = opts.requireMention ?? true;
     this.botPhoneId = digitsOnly(opts.botPhoneId ?? "");
+    // Absent and empty are different answers. Absent means the operator has not adopted the
+    // filter, and delivery is unchanged. Empty means they configured one and named nobody, which
+    // is a decision — `parseAllowedSenders` is fail-closed and honours it.
+    this.allowedSenders =
+      opts.allowedSenders === undefined ? undefined : parseAllowedSenders(opts.allowedSenders);
   }
 
   /** Escape hatch (D180-style) for advanced features. */
@@ -176,6 +184,24 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
     return lastWamid !== undefined ? { ok: true, messageId: lastWamid } : { ok: true };
   }
 
+  /**
+   * Is this sender refused by a configured allowlist?
+   *
+   * Runs before the group/mention filter because it answers a different question: that one asks
+   * whether a message was meant for us, this one asks whether the sender may reach us at all.
+   *
+   * The refusal is logged. A silent drop is indistinguishable from a broken gateway, and the
+   * first thing a mistyped allowlist causes is an operator wondering why the bot went mute.
+   */
+  private isRefusedBySenderAllowlist(inbound: WhatsAppInboundEvent): boolean {
+    if (this.allowedSenders === undefined) return false;
+    if (isSenderAllowed(inbound.fromPhone, this.allowedSenders)) return false;
+    process.stderr.write(
+      `[whatsapp] dropped inbound from "${inbound.fromPhone}" — not in the configured allowlist\n`,
+    );
+    return true;
+  }
+
   /** D309 + EC-7: group filter with digit-only normalization. */
   private shouldDropGroupMessage(inbound: WhatsAppInboundEvent): boolean {
     if (inbound.conversationType !== "group" || !this.requireMention) return false;
@@ -208,6 +234,7 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
 
     this.inboundUnsubscribe = this.backendImpl.onInbound(async (inbound) => {
       if (!this.handler) return;
+      if (this.isRefusedBySenderAllowlist(inbound)) return;
       if (this.shouldDropGroupMessage(inbound)) return;
       await this.handler(this.toMessageEvent(inbound));
     });
