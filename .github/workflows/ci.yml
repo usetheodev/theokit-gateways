@@ -99,6 +99,17 @@ jobs:
       - name: Unit and contract tests
         run: pnpm -r run test
 
+      # `integration` deliberately has no `test` script, so the line above cannot
+      # reach it — that is what stops `pnpm -r run test` from spending money and
+      # posting into real chats. But the package is not all live tests: the
+      # modules under `integration/src/` decide whether a webhook delivery may
+      # write to `.env` and which binary the capture script executes, and those
+      # are offline, fast, and exactly the kind of thing that must be verified on
+      # every PR rather than nightly. `test:unit` runs those and the readiness
+      # report; neither opens a socket to a platform.
+      - name: Integration package — offline units
+        run: pnpm --filter @theokit/gateway-integration test:unit
+
       # Guards this workflow against itself. If someone renames the root `test`
       # script or drops a package's test script, the suite would silently stop
       # running and every job above would still be green. This asserts that all
@@ -116,4 +127,18 @@ jobs:
               missing=1
             fi
           done
+          # `integration` is the one member that must NOT have a `test` script, and
+          # is therefore the one whose coverage cannot be asserted by the loop
+          # above. Its offline units hang off `test:unit` instead, so that name is
+          # what gets pinned here — otherwise the step added for them can be
+          # deleted and every job stays green, which is the hole this whole
+          # assertion exists to close.
+          if ! node -e "process.exit(require('./integration/package.json').scripts?.['test:unit'] ? 0 : 1)"; then
+            echo "::error file=integration/package.json::no \"test:unit\" script — the offline units are not covered by CI"
+            missing=1
+          fi
+          if node -e "process.exit(require('./integration/package.json').scripts?.test ? 0 : 1)"; then
+            echo "::error file=integration/package.json::integration must NOT declare a \"test\" script — pnpm -r run test would spend money and post into real chats"
+            missing=1
+          fi
           exit $missing

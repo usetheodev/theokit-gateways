@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `Workflow Lint`, a CI gate running actionlint and zizmor over `.github/workflows/`, so the
   pipeline's own conventions are checked by a machine rather than by whoever reads the diff (#33)
+- The integration package's offline logic now runs on every pull request, not nightly. The modules
+  deciding whether a webhook delivery may write to `.env`, which binary the capture script executes
+  and how a value reaches `.env` are covered by 43 tests behind `test:unit` — a script name
+  `pnpm -r run test` cannot reach, so the invariant that keeps live tests off pull requests is
+  untouched (#35)
 
 ### Changed
 
@@ -24,8 +29,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commit (#33)
 - Node pinned to 22.12.0 and pnpm to 10.34.1, resolved from `.nvmrc` and `packageManager` (#33)
 
+### Fixed
+
+- The DTS repair no longer leaves scratch files inside a published package. It asks the compiler
+  where a type comes from by writing a one-line `.dts-probe-*.ts` into the package, compiling it,
+  and deleting it — but the delete sat after the compile step rather than in a `finally`, and the
+  compile step could end the run outright via `process.exit`, which does not unwind the stack. A
+  probe from a process that no longer existed was found untracked in `packages/gateway-whatsapp/`,
+  one `git add -A` away from being committed to a public repository. The compile step now throws
+  and a single handler turns it into the same exit code, so every cleanup on the way out runs; a
+  hard kill leaves nothing behind that the next run does not sweep first; and `.gitignore` matches
+  the pattern, so a leftover cannot be committed even then (#40)
+
+- The live suite can no longer pass a release gate while testing nothing. A skipped suite is as
+  green as a passing one, and `Integration (live)` gates publication, so a secret that was deleted,
+  renamed or emptied would silently turn its platform off. `INTEGRATION_REQUIRE_PLATFORMS` now
+  names the platforms a run must exercise, and readiness FAILS when one of them is unconfigured.
+  An expired credential was never the risk — the positive `connect()` test fails loudly; this
+  covers the credential that stops being present (#32)
+
 ### Security
 
+- The `e2e` environment, which holds every platform credential, is restricted to the `develop` and
+  `main` branches. It had no protection rule and no branch policy at all, so any workflow on any
+  branch could read all 16 secrets — the environment was giving the grouping of a vault with the
+  access control of a plain repository secret (#36)
+- `pnpm capture:line` verifies LINE's HMAC signature before parsing a delivery, and rejects an
+  unsigned one with 401. It served a public tunnel URL, answered 200 to everything and took
+  `source.userId` from whatever arrived, while `LINE_CHANNEL_SECRET` sat unused in the same `.env`;
+  a third party who found the URL could have written a forged id to disk (#35)
+- `pnpm capture:line` no longer downloads `cloudflared`. It fetched the binary from
+  `releases/latest`, made it executable and ran it with the exit code of `curl` as the only check —
+  on the machine holding all ten platforms' credentials, in a repository that pins its actions by
+  commit SHA. It now requires one installed by a package manager, which verified its signature.
+  This also retires the hard-coded `linux-amd64` asset and a cached binary nothing revalidated (#35)
+- Telegram inbound's MTProto session is no longer wired into CI. The decision to leave that suite
+  uncovered was documented in three places and enforced by none: the workflow declared
+  `TELEGRAM_TEST_SESSION` and piped it into both steps, so the only barrier was nobody having
+  filled the secret in. An MTProto session is full access to a Telegram account, not a scoped
+  token (#36)
 - A `workflow_dispatch` input reached the shell as text spliced into a command line, in the step
   holding every platform credential. It is now passed as an environment variable (#33)
 - Every GitHub Action is pinned to a commit SHA rather than a movable tag, so the code that runs

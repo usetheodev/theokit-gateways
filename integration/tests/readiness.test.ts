@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { has, liveRunEnabled, missingFor } from "../src/credentials.js";
 import { PLATFORMS, type PlatformSpec } from "../src/platforms.js";
+import { findUnmetRequirements, parseRequiredPlatforms } from "../src/required-platforms.js";
 
 /** The lines describing one platform: its status, then each gap and how to close it. */
 function describeRow(spec: PlatformSpec, missing: readonly string[]): string[] {
@@ -53,6 +54,36 @@ describe("live-test readiness", () => {
     expect(rows.length).toBe(PLATFORMS.length);
   });
 
+  it("fails when a platform this environment declares as required is not configured", () => {
+    // The gap #32 was reaching for, though not the one it described. A skip is
+    // as green as a pass, and `Integration (live)` gates release — so a secret
+    // that is deleted, renamed or emptied silently turns its platform off and
+    // lets a publish through on a signal that verified nothing.
+    //
+    // Expired credentials never had this problem: the positive connect() test
+    // runs and fails. This covers the credential that stops being PRESENT.
+    //
+    // Opt-in, because only the environment knows what it should hold. Unset —
+    // the local default — requires nothing and this assertion is a no-op.
+    const required = parseRequiredPlatforms(
+      process.env.INTEGRATION_REQUIRE_PLATFORMS,
+      PLATFORMS.map((p) => p.id),
+    );
+    const unmet = findUnmetRequirements(
+      required,
+      PLATFORMS.map((spec) => ({ id: spec.id, missing: missingFor(spec) })),
+    );
+
+    expect(
+      unmet,
+      unmet.length === 0
+        ? ""
+        : `INTEGRATION_REQUIRE_PLATFORMS demands these platforms, and they are not configured:\n${unmet
+            .map((row) => `  ${row.id} — missing ${row.missing.join(", ")}`)
+            .join("\n")}\nEither restore the credentials or stop requiring the platform.`,
+    ).toEqual([]);
+  });
+
   it("never reads a credential VALUE into the report", () => {
     // A readiness report that printed values would leak every secret into CI
     // logs. It may only ever answer set/not-set.
@@ -88,9 +119,21 @@ describe("live-test readiness", () => {
   it("has a test directory for every platform id, and no orphan directories", async () => {
     // Keeps the registry and the suites from drifting apart: a platform added
     // here with no suite, or a suite for a platform nobody registered.
+    //
+    // `unit/` is named here rather than pattern-matched. It holds the tests for
+    // the pure modules under `src/` — signature policy, port parsing, binary
+    // resolution, `.env` writes — which talk to no API and must run on every
+    // PR, not nightly. Naming the one exception keeps the gate closed for the
+    // case it exists to catch: an exception list of one is still a list, and a
+    // second entry has to be argued for.
+    const NON_PLATFORM_DIRS = new Set(["unit"]);
+
     const { readdir } = await import("node:fs/promises");
     const entries = await readdir(new URL(".", import.meta.url), { withFileTypes: true });
-    const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .filter((name) => !NON_PLATFORM_DIRS.has(name));
     const ids = PLATFORMS.map((p) => p.id);
     for (const dir of dirs) {
       expect(ids, `tests/${dir}/ has no entry in PLATFORMS`).toContain(dir);

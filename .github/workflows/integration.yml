@@ -106,16 +106,13 @@ on:
         required: false
       TEAMS_TEST_CONVERSATION_ID:
         required: false
-      TELEGRAM_API_HASH:
-        required: false
-      TELEGRAM_API_ID:
-        required: false
       TELEGRAM_BOT_TOKEN:
         required: false
       TELEGRAM_TEST_CHAT_ID:
         required: false
-      TELEGRAM_TEST_SESSION:
-        required: false
+      # TELEGRAM_TEST_SESSION / TELEGRAM_API_ID / TELEGRAM_API_HASH are ABSENT
+      # by decision, not by oversight — see the block above the Telegram
+      # variables in the `Live suites` step.
       WHATSAPP_ACCESS_TOKEN:
         required: false
       WHATSAPP_PHONE_NUMBER_ID:
@@ -182,11 +179,22 @@ jobs:
           # Same names as `integration/.env`, so a suite never knows which source it got.
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
-          # A USER identity, not a second bot: Telegram never delivers bot
-          # messages to another bot, so only this can drive inbound.
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_TEST_SESSION: ${{ secrets.TELEGRAM_TEST_SESSION }}
+          # Telegram inbound is NOT wired here, deliberately (decided 2026-08-17,
+          # re-affirmed 2026-08-22). Driving it needs TELEGRAM_TEST_SESSION — an
+          # MTProto session string, which is full access to a Telegram ACCOUNT
+          # rather than a scoped token — plus the TELEGRAM_API_ID / API_HASH that
+          # are useless without it.
+          #
+          # The decision used to live only in a comment in
+          # `integration/tests/telegram/live.test.ts`, while these three lines sat
+          # here fully wired. That made the decision conventional: the only thing
+          # enforcing it was nobody having filled the secret in, and whoever did
+          # would have started shipping an account credential into CI with no
+          # review and no signal. Not referencing them is what makes it structural.
+          #
+          # Restoring this is three lines, on the day the trade changes and against
+          # a THROWAWAY account. See `integration/README.md § Running with nobody
+          # watching`.
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID }}
           # A SECOND bot in the same server. normalizeEvent drops messages
@@ -256,13 +264,43 @@ jobs:
         env:
           PLATFORM: ${{ inputs.platform }}
           INTEGRATION_LIVE: "1"
+          # The platforms this job is expected to actually exercise. A skipped
+          # suite is as green as a passing one, and this workflow gates release
+          # (`release.yml` → `live-contracts`) — so without this, a secret that
+          # gets deleted, renamed or emptied turns its platform off and lets a
+          # publish through on a signal that verified nothing.
+          #
+          # An EXPIRED credential was never the risk: the positive connect()
+          # test runs and fails loudly. This covers the credential that stops
+          # being PRESENT.
+          #
+          # The list is what run 32446907954 measured as ready, not a wish:
+          # Teams, WhatsApp and SMS have no credentials in this environment and
+          # are deliberately absent — requiring them would make the gate red
+          # about a gap that is already known and documented in the registry.
+          #
+          # Set only on this step. The readiness report above runs BEFORE the
+          # Matrix and Mattermost servers boot, so those two are legitimately
+          # unconfigured at that point.
+          INTEGRATION_REQUIRE_PLATFORMS: "discord,email,line,matrix,mattermost,slack,telegram"
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
-          # A USER identity, not a second bot: Telegram never delivers bot
-          # messages to another bot, so only this can drive inbound.
-          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
-          TELEGRAM_TEST_SESSION: ${{ secrets.TELEGRAM_TEST_SESSION }}
+          # Telegram inbound is NOT wired here, deliberately (decided 2026-08-17,
+          # re-affirmed 2026-08-22). Driving it needs TELEGRAM_TEST_SESSION — an
+          # MTProto session string, which is full access to a Telegram ACCOUNT
+          # rather than a scoped token — plus the TELEGRAM_API_ID / API_HASH that
+          # are useless without it.
+          #
+          # The decision used to live only in a comment in
+          # `integration/tests/telegram/live.test.ts`, while these three lines sat
+          # here fully wired. That made the decision conventional: the only thing
+          # enforcing it was nobody having filled the secret in, and whoever did
+          # would have started shipping an account credential into CI with no
+          # review and no signal. Not referencing them is what makes it structural.
+          #
+          # Restoring this is three lines, on the day the trade changes and against
+          # a THROWAWAY account. See `integration/README.md § Running with nobody
+          # watching`.
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID }}
           # A SECOND bot in the same server. normalizeEvent drops messages

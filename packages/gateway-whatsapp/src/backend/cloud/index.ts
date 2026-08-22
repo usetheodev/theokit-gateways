@@ -100,23 +100,53 @@ export class WhatsAppCloudBackend implements WhatsAppBackend {
     if (!verifyWebhookSignature(rawBody, signatureHeader, this.appSecret)) {
       return false;
     }
-    const json = JSON.parse(
-      typeof rawBody === "string" ? rawBody : rawBody.toString("utf8"),
-    ) as unknown;
+    const json = this.parseBody(rawBody);
+    if (json === undefined) return false;
     const envelope = parseWebhookPayload(json);
     if (envelope === null) return true; // valid signature, unrecognized shape — nothing to dispatch
-    const inbounds = normalizeInboundMessages(envelope);
-    for (const event of inbounds) {
-      if (this.inboundHandler !== undefined) {
-        await this.inboundHandler(event);
-      }
+    for (const event of normalizeInboundMessages(envelope)) {
+      if (this.inboundHandler === undefined) continue;
+      await this.dispatchContained(() => this.inboundHandler?.(event), "handler");
     }
-    const statuses = normalizeStatusReceipts(envelope);
-    for (const receipt of statuses) {
-      if (this.statusHandler !== undefined) {
-        await this.statusHandler(receipt);
-      }
+    for (const receipt of normalizeStatusReceipts(envelope)) {
+      if (this.statusHandler === undefined) continue;
+      await this.dispatchContained(() => this.statusHandler?.(receipt), "status handler");
     }
     return true;
+  }
+
+  /**
+   * Parse a signed webhook body, or report `undefined` when it is not JSON.
+   *
+   * The method's contract is true/false; the route calling it has no reason to expect a throw.
+   */
+  private parseBody(rawBody: Buffer | string): unknown | undefined {
+    try {
+      return JSON.parse(typeof rawBody === "string" ? rawBody : rawBody.toString("utf8"));
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[whatsapp-cloud] webhook body is not JSON: ${m}\n`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Run one user callback and contain its failure.
+   *
+   * Meta batches several messages, and their delivery receipts, into a single webhook. Awaiting a
+   * handler with nothing around it made one throw skip every remaining message in the payload —
+   * and reject `handleWebhookPayload`, so the caller's route answered 500 and Meta redelivered the
+   * whole batch, replaying the messages that HAD succeeded (#41).
+   */
+  private async dispatchContained(
+    run: () => Promise<void> | undefined,
+    what: string,
+  ): Promise<void> {
+    try {
+      await run();
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[whatsapp-cloud] ${what} threw: ${m}\n`);
+    }
   }
 }

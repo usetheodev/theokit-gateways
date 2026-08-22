@@ -40,9 +40,10 @@
 // regression it is not triggered by.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
+import { sweepStaleProbes, withProbe } from "./lib/dts-probe.mjs";
 import { publishedPackages, ROOT } from "./lib/published-entries.mjs";
 
 const LABEL = "dts-repair";
@@ -79,6 +80,11 @@ function escapeRegExp(literal) {
   return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** The compiler could not be RUN — distinct from the compiler reporting diagnostics. */
+class TscUnavailableError extends Error {
+  name = "TscUnavailableError";
+}
+
 function tsc(args, cwd) {
   try {
     execFileSync(
@@ -102,9 +108,13 @@ function tsc(args, cwd) {
     // A failed invocation is not a clean compile — the same guard as check-dts-typechecks.mjs. A
     // spawn that never ran arrives here with a null status and no stdout, and returning [] for that
     // would let a repair report success having compiled nothing.
+    //
+    // It throws rather than calling `process.exit` because this runs INSIDE a probe's lifetime, and
+    // `process.exit` does not unwind the stack: the `finally` that deletes the probe never ran, so
+    // the file outlived the process that made it (#40). Throwing lets every cleanup on the way out
+    // run before `main`'s handler turns it into the same exit code.
     if (typeof error.status !== "number") {
-      console.error(`[${LABEL}] x tsc could not be run: ${error.message}`);
-      process.exit(2);
+      throw new TscUnavailableError(error.message);
     }
     return `${error.stdout ?? ""}${error.stderr ?? ""}`.split("\n").map((line) => line.trim());
   }
@@ -121,13 +131,12 @@ function moduleDeclares(specifier, name, pkgDir) {
   const key = `${pkgDir}|${specifier}|${name}`;
   const hit = declaresCache.get(key);
   if (hit !== undefined) return hit;
-  const probe = join(pkgDir, `.dts-probe-${process.pid}-${declaresCache.size}.ts`);
-  writeFileSync(
-    probe,
+  const diagnostics = withProbe(
+    pkgDir,
+    declaresCache.size,
     `import type { ${name} } from ${JSON.stringify(specifier)};\nexport type _Probe = ${name};\n`,
+    (probe) => tsc([probe], pkgDir).filter((line) => /error TS\d+/.test(line)),
   );
-  const diagnostics = tsc([probe], pkgDir).filter((line) => /error TS\d+/.test(line));
-  rmSync(probe, { force: true });
   const answer = diagnostics.length === 0;
   declaresCache.set(key, answer);
   return answer;
@@ -277,118 +286,213 @@ function countSites(byFile) {
   return total;
 }
 
-const only = process.argv[2] === undefined ? undefined : resolve(process.argv[2]);
-const packages = publishedPackages().filter((pkg) => only === undefined || pkg.dir === only);
-if (packages.length === 0) {
-  console.error(`[${LABEL}] x no package matched ${only ?? "(all)"} — refusing to report success`);
-  process.exit(2);
+/** Current unresolved-name diagnostics for `pkg`, grouped by the declaration file reporting them. */
+function diagnosticSites(pkg) {
+  const byFile = new Map();
+  for (const raw of tsc(["--skipLibCheck", "false", ...pkg.entries], ROOT)) {
+    const match = DIAGNOSTIC.exec(raw);
+    if (match === null) continue;
+    const [, file, line, column, name] = match;
+    if (!byFile.has(file)) byFile.set(file, []);
+    byFile.get(file).push({ name, line: Number(line), column: Number(column) });
+  }
+  return byFile;
 }
 
-let repaired = 0;
-let unresolved = 0;
+/**
+ * Refuse a repair that changed what the file exports.
+ *
+ * S0 rewrites `export ... from` statements, the one strategy here that can change what a consumer
+ * is able to import. A repair that fixes a typecheck by quietly dropping an export has broken the
+ * package in a way the typecheck cannot see.
+ */
+function assertSurfaceUnchanged(pkgName, file, before, after) {
+  if (before === undefined || after === undefined) return;
+  const lost = [...before].filter((name) => !after.has(name));
+  const gained = [...after].filter((name) => !before.has(name));
+  if (lost.length === 0 && gained.length === 0) return;
+  console.error(`[${LABEL}] x ${pkgName}: the repair changed the public surface of ${file}`);
+  if (lost.length > 0) console.error(`      lost: ${lost.join(", ")}`);
+  if (gained.length > 0) console.error(`      gained: ${gained.join(", ")}`);
+  process.exit(1);
+}
 
-for (const pkg of packages) {
-  if (!pkg.built) {
-    console.error(`[${LABEL}] x ${pkg.name}: no dist/ — run the build first`);
-    process.exit(2);
+/**
+ * Bind every reported name in one declaration file, write it back, and verify the export surface
+ * survived. Returns how many names were bound.
+ */
+function repairFile(pkg, file, sites) {
+  const path = file.startsWith("/") ? file : join(ROOT, file);
+  const surfaceBefore = exportedNames(path);
+  let source = readFileSync(path, "utf8");
+
+  // Grouped by NAME: S0-S2 bind a name once for the whole file, and applying them per diagnostic
+  // bound `EmailMessageEvent` twice — a converted re-export plus a prepended import — whose
+  // duplicate identifier failed the very typecheck the repair exists to pass.
+  const names = new Map();
+  for (const site of sites) if (!names.has(site.name)) names.set(site.name, site);
+
+  let bound = 0;
+  for (const [name, site] of names) {
+    const next =
+      bindViaReExport(source, name, pkg.dir) ??
+      bindViaExistingImport(source, name, pkg.dir) ??
+      bindViaSourceImport(source, name, pkg.dir) ??
+      bindViaLocalAlias(source, name, site.line, site.column);
+    if (next === undefined) continue;
+    source = next;
+    bound += 1;
   }
+  writeFileSync(path, source);
+  assertSurfaceUnchanged(pkg.name, file, surfaceBefore, exportedNames(path));
+  return bound;
+}
 
-  // Repaired in ROUNDS, re-asking the compiler between them. S0/S2 insert lines, which shifts every
-  // position recorded earlier in the same pass — measured here: binding `ChildProcess` moved
-  // `WhatsAppSendResult` from line 410 to 411, and S3's position guard then correctly refused to
-  // edit text that no longer said what the diagnostic claimed. Acting only on CURRENT diagnostics
-  // removes the class of bug rather than ordering around one instance of it.
-  const MAX_ROUNDS = 6;
+/** Name every site no strategy could bind. Returns how many, so the run can fail on the total. */
+function reportUnbindable(pkgName, byFile) {
+  let count = 0;
+  for (const [file, sites] of byFile) {
+    for (const site of sites) {
+      console.error(`[${LABEL}] x ${pkgName}: cannot bind '${site.name}' (${file}:${site.line})`);
+      count += 1;
+    }
+  }
+  return count;
+}
+
+const MAX_ROUNDS = 6;
+
+/** One pass over the current diagnostics. Returns what it bound, and what it could not. */
+function repairRound(pkg, byFile) {
+  let bound = 0;
+  for (const [file, sites] of byFile) bound += repairFile(pkg, file, sites);
+  // A round that bound nothing will bind nothing next time either — the input is identical. Naming
+  // the stuck sites here is what turns "still failing" into "cannot bind X at file:line".
+  return bound > 0
+    ? { bound, unresolved: 0 }
+    : { bound, unresolved: reportUnbindable(pkg.name, byFile) };
+}
+
+/**
+ * Bind names until the compiler stops reporting them, re-asking between rounds.
+ *
+ * S0/S2 insert lines, which shifts every position recorded earlier in the same pass — measured
+ * here: binding `ChildProcess` moved `WhatsAppSendResult` from line 410 to 411, and S3's position
+ * guard then correctly refused to edit text that no longer said what the diagnostic claimed. Acting
+ * only on CURRENT diagnostics removes the class of bug rather than ordering around one instance.
+ *
+ * `found` is the site count of the FIRST round — what the package arrived with, which is what the
+ * summary line reports.
+ */
+function runRepairRounds(pkg) {
+  let repaired = 0;
+  let unresolved = 0;
   let found = 0;
   let round = 0;
+
   for (; round < MAX_ROUNDS; round += 1) {
-    const byFile = new Map();
-    for (const raw of tsc(["--skipLibCheck", "false", ...pkg.entries], ROOT)) {
-      const match = DIAGNOSTIC.exec(raw);
-      if (match === null) continue;
-      const [, file, line, column, name] = match;
-      if (!byFile.has(file)) byFile.set(file, []);
-      byFile.get(file).push({ name, line: Number(line), column: Number(column) });
-    }
+    const byFile = diagnosticSites(pkg);
     if (byFile.size === 0) break;
     if (round === 0) found = countSites(byFile);
 
-    let progressed = false;
-    for (const [file, sites] of byFile) {
-      const path = file.startsWith("/") ? file : join(ROOT, file);
-      const surfaceBefore = exportedNames(path);
-      let source = readFileSync(path, "utf8");
-
-      // Grouped by NAME: S0-S2 bind a name once for the whole file, and applying them per
-      // diagnostic bound `EmailMessageEvent` twice — a converted re-export plus a prepended import —
-      // whose duplicate identifier failed the very typecheck the repair exists to pass.
-      const names = new Map();
-      for (const site of sites) if (!names.has(site.name)) names.set(site.name, site);
-
-      for (const [name, site] of names) {
-        const next =
-          bindViaReExport(source, name, pkg.dir) ??
-          bindViaExistingImport(source, name, pkg.dir) ??
-          bindViaSourceImport(source, name, pkg.dir) ??
-          bindViaLocalAlias(source, name, site.line, site.column);
-        if (next === undefined) continue;
-        source = next;
-        repaired += 1;
-        progressed = true;
-      }
-      writeFileSync(path, source);
-
-      const surfaceAfter = exportedNames(path);
-      if (surfaceBefore !== undefined && surfaceAfter !== undefined) {
-        const lost = [...surfaceBefore].filter((name) => !surfaceAfter.has(name));
-        const gained = [...surfaceAfter].filter((name) => !surfaceBefore.has(name));
-        if (lost.length > 0 || gained.length > 0) {
-          console.error(
-            `[${LABEL}] x ${pkg.name}: the repair changed the public surface of ${file}`,
-          );
-          if (lost.length > 0) console.error(`      lost: ${lost.join(", ")}`);
-          if (gained.length > 0) console.error(`      gained: ${gained.join(", ")}`);
-          process.exit(1);
-        }
-      }
-    }
-
-    if (!progressed) {
-      for (const [file, sites] of byFile) {
-        for (const site of sites) {
-          console.error(
-            `[${LABEL}] x ${pkg.name}: cannot bind '${site.name}' (${file}:${site.line})`,
-          );
-          unresolved += 1;
-        }
-      }
+    const outcome = repairRound(pkg, byFile);
+    repaired += outcome.bound;
+    if (outcome.bound === 0) {
+      unresolved += outcome.unresolved;
       break;
     }
   }
+
   if (round === MAX_ROUNDS) {
     console.error(
       `[${LABEL}] x ${pkg.name}: still repairing after ${MAX_ROUNDS} rounds — refusing to loop`,
     );
     process.exit(1);
   }
-  if (found === 0) {
-    console.log(`[${LABEL}] ok ${pkg.name} — nothing to repair`);
-    continue;
-  }
+  return { repaired, unresolved, found };
+}
 
+/**
+ * Re-run the compiler over the repaired declarations and refuse to report a repair that did not
+ * actually reach zero diagnostics.
+ */
+function assertDeclarationsCompile(pkg) {
   const after = tsc(["--skipLibCheck", "false", ...pkg.entries], ROOT).filter((line) =>
     /error TS\d+/.test(line),
   );
-  if (after.length > 0) {
-    console.error(`[${LABEL}] x ${pkg.name}: ${after.length} diagnostic(s) remain after repair`);
-    for (const line of after.slice(0, 12)) console.error(`      ${line.replace(`${ROOT}/`, "")}`);
-    process.exit(1);
-  }
-  console.log(`[${LABEL}] ok ${pkg.name} — bound ${found} name(s); declarations compile`);
-}
-
-if (unresolved > 0) {
-  console.error(`[${LABEL}] FAIL — ${unresolved} name(s) could not be bound`);
+  if (after.length === 0) return;
+  console.error(`[${LABEL}] x ${pkg.name}: ${after.length} diagnostic(s) remain after repair`);
+  for (const line of after.slice(0, 12)) console.error(`      ${line.replace(`${ROOT}/`, "")}`);
   process.exit(1);
 }
-console.log(`[${LABEL}] done — ${repaired} binding(s) added across ${packages.length} package(s)`);
+
+/**
+ * Repair one package's declarations. Returns `{ repaired, unresolved }`; exits the process on a
+ * failure no further round can recover from.
+ */
+function repairPackage(pkg) {
+  if (!pkg.built) {
+    console.error(`[${LABEL}] x ${pkg.name}: no dist/ — run the build first`);
+    process.exit(2);
+  }
+
+  // Clear scratch a killed run could not: a signal leaves no `finally` to run, and the leftover is
+  // a `.ts` file sitting in a published package's directory (#40).
+  const stale = sweepStaleProbes(pkg.dir);
+  if (stale > 0) {
+    console.warn(`[${LABEL}] ! ${pkg.name}: removed ${stale} stale probe(s) from an earlier run`);
+  }
+
+  const { repaired, unresolved, found } = runRepairRounds(pkg);
+  if (found === 0) {
+    console.log(`[${LABEL}] ok ${pkg.name} — nothing to repair`);
+    return { repaired, unresolved };
+  }
+  assertDeclarationsCompile(pkg);
+  console.log(`[${LABEL}] ok ${pkg.name} — bound ${found} name(s); declarations compile`);
+  return { repaired, unresolved };
+}
+
+/**
+ * Repair every matched package, or report why it could not.
+ *
+ * The body lives in a function so the process exits from ONE place. A helper that called
+ * `process.exit` from inside a probe's lifetime skipped the cleanup on the way out, which is how a
+ * scratch file ended up untracked in a published package's directory (#40).
+ */
+function main() {
+  const only = process.argv[2] === undefined ? undefined : resolve(process.argv[2]);
+  const packages = publishedPackages().filter((pkg) => only === undefined || pkg.dir === only);
+  if (packages.length === 0) {
+    console.error(
+      `[${LABEL}] x no package matched ${only ?? "(all)"} — refusing to report success`,
+    );
+    process.exit(2);
+  }
+
+  let repaired = 0;
+  let unresolved = 0;
+  for (const pkg of packages) {
+    const result = repairPackage(pkg);
+    repaired += result.repaired;
+    unresolved += result.unresolved;
+  }
+
+  if (unresolved > 0) {
+    console.error(`[${LABEL}] FAIL — ${unresolved} name(s) could not be bound`);
+    process.exit(1);
+  }
+  console.log(
+    `[${LABEL}] done — ${repaired} binding(s) added across ${packages.length} package(s)`,
+  );
+}
+
+try {
+  main();
+} catch (error) {
+  if (error instanceof TscUnavailableError) {
+    console.error(`[${LABEL}] x tsc could not be run: ${error.message}`);
+    process.exit(2);
+  }
+  throw error;
+}
