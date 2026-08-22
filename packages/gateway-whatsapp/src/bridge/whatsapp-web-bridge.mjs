@@ -25,17 +25,56 @@ function emitError(message) {
   emit({ event: "error", message });
 }
 
+/**
+ * Where to load the WhatsApp Web client from.
+ *
+ * Overridable so the start-up tests can point at a stub and exercise the two failure paths
+ * below without installing anything. Production never sets it.
+ */
+const SPECIFIER = process.env.THEOKIT_WHATSAPP_WEB_SPECIFIER ?? "whatsapp-web.js";
+
 let Client;
 let LocalAuth;
 try {
-  const mod = await import("whatsapp-web.js");
-  Client = mod.Client;
-  LocalAuth = mod.LocalAuth;
+  const mod = await import(SPECIFIER);
+  // D315: read the API off the DEFAULT export, not off synthesised named bindings.
+  //
+  // `whatsapp-web.js/index.js` ends its `module.exports` object with a spread
+  // (`...Constants`). `cjs-module-lexer` cannot statically analyse an object built that
+  // way, so Node synthesises only some named exports — measured on 1.34.7, exactly
+  // `Client`, while `LocalAuth`, `NoAuth` and `RemoteAuth` exist only on the default.
+  // Destructuring the namespace therefore yielded `LocalAuth === undefined`, and the
+  // process died at `new LocalAuth(...)` with a TypeError (B-002). The default export is
+  // the whole `module.exports` value at runtime, whatever the lexer could prove.
+  //
+  // The `?? mod` fallback covers a true-ESM module, where there is no default to read.
+  const api = mod.default ?? mod;
+  Client = api.Client ?? mod.Client;
+  LocalAuth = api.LocalAuth ?? mod.LocalAuth;
 } catch (err) {
   emitError(
     `whatsapp-web.js not installed in your app. Run \`pnpm add whatsapp-web.js\` to use the web backend. (${err?.message ?? err})`,
   );
   process.exit(1);
+}
+
+// D316: a package that is PRESENT but does not expose what we need is a different failure
+// from one that is absent, and it needs a different message. The `catch` above only sees an
+// import that threw; a resolved module missing a member sails past it and surfaces thirteen
+// lines later as an unhandled TypeError the parent cannot map to anything. Telling the
+// consumer to run `pnpm add` for a package they already have is worse than saying nothing.
+for (const [name, value] of [
+  ["Client", Client],
+  ["LocalAuth", LocalAuth],
+]) {
+  if (typeof value !== "function") {
+    emitError(
+      `whatsapp-web.js is installed but does not export ${name} as a constructor. ` +
+        `Expected a function, got ${typeof value}. This usually means an incompatible version — ` +
+        `the web backend expects the peer range declared in @theokit/gateway-whatsapp.`,
+    );
+    process.exit(1);
+  }
 }
 
 const args = process.argv.slice(2);

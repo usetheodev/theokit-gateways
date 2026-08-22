@@ -89,14 +89,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The WhatsApp `web` backend never started. Its bridge takes `LocalAuth` off the module namespace
+- The WhatsApp `web` backend now starts. Its bridge took `LocalAuth` off the module namespace
   of `whatsapp-web.js`, which exports that name only on the default, so it is `undefined` and the
   process dies 1011 ms in with `TypeError: LocalAuth is not a constructor`. Nothing caught it
   because nothing ever executed the script: every test injects a fake child process, and the live
   suite excludes the backend by declaration — 132 green tests over a backend that cannot start. A
   second, independent blocker sits behind it: `puppeteer` is absent from
-  `pnpm.onlyBuiltDependencies`, so no browser is ever downloaded. Registered as B-002 with a
-  failing test; the fix follows
+  `pnpm.onlyBuiltDependencies`, so no browser is ever downloaded. Fixed (B-002): the API is read
+  off the default export, and a present-but-incompatible package now reports which binding it is
+  missing instead of crashing. The browser gap remains, but is now reported through the bridge's
+  own protocol with the command that fixes it, rather than surfacing as a connect timeout
 
 - A hardening sweep over the runner and all ten adapters closed six defects, each measured against
   the running code before it was filed and re-measured after the fix. Two were fatal to the process:
