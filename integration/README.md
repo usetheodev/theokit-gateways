@@ -200,6 +200,18 @@ same absence of red. Every skip here names the exact variable that was missing,
 because "9 skipped, 1 passed" otherwise reads at a glance like ten platforms
 passing.
 
+**And in CI, skips are not allowed to be silent.** Naming the gap is enough for a
+human reading output; it is not enough for a gate. This workflow gates release,
+so `INTEGRATION_REQUIRE_PLATFORMS` lists the platforms a run is expected to
+actually exercise, and the readiness suite FAILS when one of them is not
+configured. Without it, a secret that gets deleted, renamed or emptied turns its
+platform off and a publish goes through on a signal that verified nothing.
+
+An expired credential never had this problem — the positive `connect()` test
+runs and fails. This covers the credential that stops being *present*. The
+variable is opt-in and unset locally, so a laptop with two credentials keeps
+working unchanged.
+
 **Targets are throwaway.** Every `*_TEST_*` variable must point at a chat,
 channel, room or number created for this and nothing else. A credential says who
 you are; a target says where it is safe to write. They are separate fields in the

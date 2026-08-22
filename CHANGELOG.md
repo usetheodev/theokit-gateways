@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commit (#33)
 - Node pinned to 22.12.0 and pnpm to 10.34.1, resolved from `.nvmrc` and `packageManager` (#33)
 
+### Fixed
+
+- The live suite can no longer pass a release gate while testing nothing. A skipped suite is as
+  green as a passing one, and `Integration (live)` gates publication, so a secret that was deleted,
+  renamed or emptied would silently turn its platform off. `INTEGRATION_REQUIRE_PLATFORMS` now
+  names the platforms a run must exercise, and readiness FAILS when one of them is unconfigured.
+  An expired credential was never the risk — the positive `connect()` test fails loudly; this
+  covers the credential that stops being present (#32)
+
 ### Security
 
 - The `e2e` environment, which holds every platform credential, is restricted to the `develop` and

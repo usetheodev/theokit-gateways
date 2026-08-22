@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 
 import { has, liveRunEnabled, missingFor } from "../src/credentials.js";
 import { PLATFORMS, type PlatformSpec } from "../src/platforms.js";
+import { findUnmetRequirements, parseRequiredPlatforms } from "../src/required-platforms.js";
 
 /** The lines describing one platform: its status, then each gap and how to close it. */
 function describeRow(spec: PlatformSpec, missing: readonly string[]): string[] {
@@ -51,6 +52,36 @@ describe("live-test readiness", () => {
 
     // The report is the point; the assertion only guards the report itself.
     expect(rows.length).toBe(PLATFORMS.length);
+  });
+
+  it("fails when a platform this environment declares as required is not configured", () => {
+    // The gap #32 was reaching for, though not the one it described. A skip is
+    // as green as a pass, and `Integration (live)` gates release — so a secret
+    // that is deleted, renamed or emptied silently turns its platform off and
+    // lets a publish through on a signal that verified nothing.
+    //
+    // Expired credentials never had this problem: the positive connect() test
+    // runs and fails. This covers the credential that stops being PRESENT.
+    //
+    // Opt-in, because only the environment knows what it should hold. Unset —
+    // the local default — requires nothing and this assertion is a no-op.
+    const required = parseRequiredPlatforms(
+      process.env.INTEGRATION_REQUIRE_PLATFORMS,
+      PLATFORMS.map((p) => p.id),
+    );
+    const unmet = findUnmetRequirements(
+      required,
+      PLATFORMS.map((spec) => ({ id: spec.id, missing: missingFor(spec) })),
+    );
+
+    expect(
+      unmet,
+      unmet.length === 0
+        ? ""
+        : `INTEGRATION_REQUIRE_PLATFORMS demands these platforms, and they are not configured:\n${unmet
+            .map((row) => `  ${row.id} — missing ${row.missing.join(", ")}`)
+            .join("\n")}\nEither restore the credentials or stop requiring the platform.`,
+    ).toEqual([]);
   });
 
   it("never reads a credential VALUE into the report", () => {
