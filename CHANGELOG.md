@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- WhatsApp can now be validated without arranging anything by hand. Its live suite had never been
+  executed, and could not have answered whether the integration worked: the adapter could only send
+  free-form text, which Meta refuses more than 24 hours after the recipient last replied, so the
+  outbound test asserted success while its own comment admitted the send might be refused on policy.
+  `WhatsAppCloudBackend.sendTemplate()` carries no such condition, and `hello_world` is pre-approved
+  on every WhatsApp Business account. The text test now asserts the pair it can honestly assert —
+  delivered, or refused for that one documented reason and reported as `session_window_expired`
+  (#46)
+
 - The live suite now proves the core's capabilities instead of one of them. It drove exactly one of
   `@theokit/gateway`'s ten runtime exports — `GatewayRunner` — and nothing anywhere said so; the
   six defects fixed in this same cycle all sat in code no live test touched, two of them fatal to
