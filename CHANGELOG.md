@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `WhatsAppAdapter.fromCloud()` and `.fromWeb()`. The class docblock had instructed consumers to
+  call them since the package was written and neither existed, so the only construction guidance
+  the package gave produced code that did not compile (#47). Three exported types described that
+  API with no consumer in any source file. The factories validate at construction — an empty
+  `accessToken` now throws `ConfigurationError` rather than returning an adapter that fails later
+  against the network — and `WhatsAppAdapterOptions` was reshaped so the union carries only what
+  differs between backends. `quality:doc-coverage` read 100% throughout, because it measures
+  whether a docblock exists and not whether it is true
+
 - `BACKLOG.md` — the maintenance registry this repository governs itself with, plus the routing
   table and domain specialist that make an item resolvable. The routing table shipped as the `theo`
   ecosystem's eight domains, none of which name anything here, so every item filed would have been
