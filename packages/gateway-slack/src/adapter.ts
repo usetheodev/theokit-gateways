@@ -11,13 +11,27 @@
  * @public
  */
 
-// @slack/bolt v3 is CommonJS-only; named ESM `import { App }` fails at
-// runtime. Use default import + destructure (Node CJS-interop via
-// esModuleInterop in tsconfig.base).
-import bolt from "@slack/bolt";
+// Bolt v5 exports the App class both by name and as the default. This used to
+// be `import bolt from "@slack/bolt"; const { App } = bolt;` because v3 was
+// CommonJS with the NAMESPACE as its default export, so the named form was
+// `undefined` at runtime. v5 inverts that — the default IS the class — so the
+// old form now destructures `App` off a constructor and gets `undefined`.
+//
+// The two shapes are mutually exclusive, which is why the peer range names v5
+// rather than spanning both. `tests/bolt-interop.test.ts` asserts this against
+// the real package, since every other suite mocks Bolt and cannot see it.
+import { App } from "@slack/bolt";
 
-const { App } = bolt;
-type App = InstanceType<typeof App>;
+/**
+ * The Bolt `App` INSTANCE type.
+ *
+ * Named apart from the class deliberately. The previous
+ * `type App = InstanceType<typeof App>` worked only because `App` arrived by
+ * destructuring rather than by import; with a real named import the two
+ * declarations collide (TS2440). Exported so the declaration `getApp()` emits
+ * refers to a name consumers can also reach.
+ */
+export type BoltApp = InstanceType<typeof App>;
 
 import {
   BasePlatformAdapter,
@@ -53,7 +67,7 @@ export interface SlackAdapterOptions {
  */
 export class SlackAdapter extends BasePlatformAdapter {
   readonly platform = "slack" as const;
-  private app: App | undefined;
+  private app: BoltApp | undefined;
   private connected = false;
   private botUserId: string | undefined;
   private handler?: (event: GatewayMessageEvent) => Promise<void>;
@@ -65,7 +79,7 @@ export class SlackAdapter extends BasePlatformAdapter {
   }
 
   /** Escape hatch for advanced Bolt features (Block Kit, slash commands, modals). */
-  getApp(): App | undefined {
+  getApp(): BoltApp | undefined {
     return this.app;
   }
 
@@ -94,7 +108,7 @@ export class SlackAdapter extends BasePlatformAdapter {
             { logLevel: this.opts.logLevel as any }
           : {}),
       });
-      this.app.event("message", async (args) => this.handleMessage(args));
+      this.app.event("message", async (args: { body: unknown }) => this.handleMessage(args));
       await this.app.start();
       // D277: cache botUserId via auth.test for loop guard.
       const auth = await this.app.client.auth.test();
@@ -116,8 +130,18 @@ export class SlackAdapter extends BasePlatformAdapter {
   }
 
   override async disconnect(): Promise<void> {
-    // D278: idempotent + safe before connect.
-    if (!this.connected || this.app === undefined) return;
+    // Wait for an in-flight connect before deciding there is nothing to stop.
+    // `connected` only flips after BOTH start() and auth.test() resolve, so a
+    // disconnect arriving in that window used to return immediately against a
+    // socket that was still opening — and nothing held a reference able to
+    // close it afterwards (#31). Swallow its failure: a connect that already
+    // failed cleaned up after itself, and disconnect() does not report it.
+    if (this.connectingPromise !== undefined) {
+      await this.connectingPromise.catch(() => undefined);
+    }
+    // D278: idempotent + safe before connect. Guarded on the App rather than on
+    // `connected`, so a half-connected one is still torn down.
+    if (this.app === undefined) return;
     try {
       await this.app.stop();
     } catch (err) {
