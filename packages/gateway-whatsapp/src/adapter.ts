@@ -18,11 +18,14 @@ import {
 } from "@theokit/gateway";
 
 import { isSenderAllowed, parseAllowedSenders } from "./allowlist.js";
+import { WhatsAppCloudBackend } from "./backend/cloud/index.js";
+import { WhatsAppWebBackend } from "./backend/web/index.js";
 import type {
   WhatsAppBackend,
   WhatsAppInboundEvent,
   WhatsAppStatusReceipt,
 } from "./backend-types.js";
+import { ConfigurationError } from "./errors.js";
 import { splitForWhatsApp } from "./split.js";
 
 /** Cloud (Meta WhatsApp Business Cloud API) backend config (ADR D304). */
@@ -45,23 +48,54 @@ export interface WhatsAppWebConfig {
   readonly bridgeScriptPath?: string;
 }
 
-/** Discriminated options shape (ADR D311). */
+/**
+ * Which backend to build, and its configuration.
+ *
+ * The union carries only what DIFFERS between backends. Options that mean the same thing on
+ * either one — `requireMention`, `botPhoneId`, `allowedSenders` — live in
+ * {@link WhatsAppAdapterCommonOptions} instead, so there is one copy rather than one per arm
+ * for the two copies to drift apart (ADR D318).
+ *
+ * @public
+ */
 export type WhatsAppAdapterOptions =
-  | {
-      readonly backend: "cloud";
-      readonly cloud: WhatsAppCloudConfig;
-      /** D309: require @mention in groups. Default `true`. */
-      readonly requireMention?: boolean;
-      /** Phone id to detect mentions of (digits only). Defaults to `cloud.phoneNumberId`. */
-      readonly botPhoneId?: string;
+  | { readonly backend: "cloud"; readonly cloud: WhatsAppCloudConfig }
+  | { readonly backend: "web"; readonly web: WhatsAppWebConfig };
+
+/**
+ * Options that apply whichever backend is in use.
+ *
+ * @public
+ */
+export interface WhatsAppAdapterCommonOptions {
+  /** D309: require an @mention in groups. Default `true`. */
+  readonly requireMention?: boolean;
+  /** Phone id to detect mentions of (digits only). Defaults to the cloud phone number id. */
+  readonly botPhoneId?: string;
+  /**
+   * Comma-separated senders allowed to reach the handler. Absent leaves delivery unchanged;
+   * an empty string admits nobody. See `allowlist.ts` for why those differ.
+   */
+  readonly allowedSenders?: string;
+}
+
+/**
+ * Fail at the boundary when a required option is missing or blank.
+ *
+ * A factory that returns an adapter with an empty token has moved the error away from its
+ * cause: the stack then names a send, and the mistake was in construction
+ * (`rules/error-handling.md` § 2).
+ */
+function requireNonEmpty(entries: ReadonlyArray<readonly [string, string | undefined]>): void {
+  for (const [name, value] of entries) {
+    if (value === undefined || value.trim().length === 0) {
+      throw new ConfigurationError({
+        code: "missing_option",
+        message: `gateway-whatsapp: ${name} is required and must not be empty.`,
+      });
     }
-  | {
-      readonly backend: "web";
-      readonly web: WhatsAppWebConfig;
-      readonly requireMention?: boolean;
-      /** Phone id to detect mentions of (digits only). Required for groups in web mode. */
-      readonly botPhoneId?: string;
-    };
+  }
+}
 
 /** EC-7: digit-only normalizer for mention comparison (handles `+`, `-`, `()`, spaces). */
 export function digitsOnly(s: string): string {
@@ -96,8 +130,8 @@ export function phoneRuns(s: string): string[] {
 /**
  * Adapter facade. Implements `BasePlatformAdapter` (D172).
  *
- * Use `WhatsAppAdapter.fromCloud(config)` or `WhatsAppAdapter.fromWeb(config)`
- * once the backend factories land (or pass `backend` directly in constructor).
+ * Use `WhatsAppAdapter.fromCloud(config)` or `WhatsAppAdapter.fromWeb(config)`. The
+ * constructor stays available for tests and for a backend of your own.
  */
 export class WhatsAppAdapter extends BasePlatformAdapter {
   readonly platform = "whatsapp" as const;
@@ -114,11 +148,63 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   private inboundUnsubscribe?: () => void;
   private statusUnsubscribe?: () => void;
 
-  /** Construct from a pre-built backend (used by the static factories + tests). */
-  constructor(
-    backendImpl: WhatsAppBackend,
-    opts: { requireMention?: boolean; botPhoneId?: string; allowedSenders?: string } = {},
-  ) {
+  /**
+   * Build a Cloud-API adapter.
+   *
+   * The construction path this package's docblock has named since it was written, and which
+   * did not exist until #47 — a consumer following the only guidance the package gave wrote
+   * code that would not compile.
+   *
+   * Prefer it over the constructor: it keeps `WhatsAppCloudBackend` an implementation detail
+   * of this package rather than something every consumer imports and assembles.
+   *
+   * @throws {ConfigurationError} when a required credential is missing or empty.
+   * @public
+   */
+  static fromCloud(
+    cloud: WhatsAppCloudConfig,
+    opts: WhatsAppAdapterCommonOptions = {},
+  ): WhatsAppAdapter {
+    requireNonEmpty([
+      ["accessToken", cloud.accessToken],
+      ["phoneNumberId", cloud.phoneNumberId],
+      ["appSecret", cloud.appSecret],
+    ]);
+    return new WhatsAppAdapter(
+      new WhatsAppCloudBackend({
+        accessToken: cloud.accessToken,
+        phoneNumberId: cloud.phoneNumberId,
+        appSecret: cloud.appSecret,
+        ...(cloud.apiVersion !== undefined ? { apiVersion: cloud.apiVersion } : {}),
+      }),
+      { botPhoneId: cloud.phoneNumberId, ...opts },
+    );
+  }
+
+  /**
+   * Build a WhatsApp-Web adapter.
+   *
+   * Unofficial: it drives a real WhatsApp Web session through a browser, which Meta's terms
+   * do not sanction and which can get a number banned. It also needs a browser this package
+   * does not install. Prefer {@link WhatsAppAdapter.fromCloud} unless the number has no
+   * Cloud API access.
+   *
+   * @throws {ConfigurationError} when `sessionId` is missing or empty.
+   * @public
+   */
+  static fromWeb(web: WhatsAppWebConfig, opts: WhatsAppAdapterCommonOptions = {}): WhatsAppAdapter {
+    requireNonEmpty([["sessionId", web.sessionId]]);
+    return new WhatsAppAdapter(
+      new WhatsAppWebBackend({
+        sessionId: web.sessionId,
+        ...(web.bridgeScriptPath !== undefined ? { bridgeScriptPath: web.bridgeScriptPath } : {}),
+      }),
+      opts,
+    );
+  }
+
+  /** Construct from a pre-built backend. Prefer the factories; this is for tests and for a custom backend. */
+  constructor(backendImpl: WhatsAppBackend, opts: WhatsAppAdapterCommonOptions = {}) {
     super();
     this.backendImpl = backendImpl;
     this.requireMention = opts.requireMention ?? true;

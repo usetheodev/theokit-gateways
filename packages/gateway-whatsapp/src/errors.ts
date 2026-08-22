@@ -7,6 +7,8 @@
  * @internal
  */
 
+import { GatewayConfigurationError } from "@theokit/gateway";
+
 import type { WhatsAppSendResult } from "./backend-types.js";
 
 type ErrorPayload = Required<WhatsAppSendResult>["error"];
@@ -17,6 +19,34 @@ interface MetaErrorBody {
     message?: string;
     error_subcode?: number;
   };
+}
+
+/** Public input shape for the {@link ConfigurationError} constructor. */
+export interface ConfigurationErrorOptions {
+  readonly code: string;
+  readonly message?: string;
+  readonly detail?: string;
+}
+
+/**
+ * A required option is missing or empty.
+ *
+ * Raised where a consumer hands us configuration — the factories — rather than later, when
+ * the value is finally used against the network. A factory that returns an adapter which
+ * cannot authenticate has moved the error away from its cause: the stack then names a send,
+ * and the mistake was in construction.
+ *
+ * Matches the shape every sibling adapter uses (`gateway-line`, `gateway-email`, …), which
+ * is what makes one `catch (e) { if (e instanceof GatewayConfigurationError) }` work across
+ * all of them.
+ *
+ * @public
+ */
+export class ConfigurationError extends GatewayConfigurationError {
+  override readonly name = "ConfigurationError";
+  constructor(opts: ConfigurationErrorOptions) {
+    super("gateway-whatsapp", opts);
+  }
 }
 
 /**

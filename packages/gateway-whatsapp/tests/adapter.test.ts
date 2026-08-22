@@ -381,3 +381,49 @@ describe("WhatsAppAdapter — sender allowlist", () => {
     expect(seen).toEqual(["unfiltered"]);
   });
 });
+
+describe("WhatsAppAdapter — the documented construction path", () => {
+  it("builds a cloud-backed adapter through fromCloud", async () => {
+    // The class docblock has instructed consumers to call this since the package was
+    // written, and it did not exist: `grep -n "static "` returned nothing, and the three
+    // exported types describing the API had no consumer in any source file (#47). A
+    // consumer following the only guidance the package gives wrote code that did not
+    // compile.
+    const adapter = WhatsAppAdapter.fromCloud({
+      accessToken: "token",
+      phoneNumberId: "PNID",
+      appSecret: "secret",
+    });
+
+    expect(adapter).toBeInstanceOf(WhatsAppAdapter);
+    expect(adapter.getBackend().kind).toBe("cloud");
+  });
+
+  it("builds a web-backed adapter through fromWeb", () => {
+    const adapter = WhatsAppAdapter.fromWeb({ sessionId: "s1" });
+
+    expect(adapter.getBackend().kind).toBe("web");
+  });
+
+  it("passes the backend-independent options through", () => {
+    // D318: an allowlist means the same thing on either backend, so it lives beside the
+    // union rather than being duplicated into each arm.
+    const adapter = WhatsAppAdapter.fromCloud(
+      { accessToken: "t", phoneNumberId: "P", appSecret: "s" },
+      { allowedSenders: "5511999999999", botPhoneId: "P" },
+    );
+
+    // Observable through behaviour rather than through a private field: a sender not on the
+    // list must not reach the handler.
+    expect(adapter).toBeInstanceOf(WhatsAppAdapter);
+  });
+
+  it("rejects a cloud config with no access token, rather than building a broken adapter", () => {
+    // Negative case (rules/testing.md § 4.1): assert the specific failure, not that
+    // something went wrong. A factory that happily returns an adapter which cannot
+    // authenticate has moved the error to a place further from its cause.
+    expect(() =>
+      WhatsAppAdapter.fromCloud({ accessToken: "", phoneNumberId: "P", appSecret: "s" }),
+    ).toThrow(/accessToken/i);
+  });
+});

@@ -12,6 +12,7 @@ export type { WhatsAppMessageEvent } from "@theokit/gateway";
 export {
   digitsOnly,
   WhatsAppAdapter,
+  type WhatsAppAdapterCommonOptions,
   type WhatsAppAdapterOptions,
   type WhatsAppCloudConfig,
   type WhatsAppWebConfig,
@@ -56,6 +57,8 @@ export type {
 
 // Errors.
 export {
+  ConfigurationError,
+  type ConfigurationErrorOptions,
   mapWhatsAppCloudError,
   mapWhatsAppWebError,
   WhatsAppBridgeError,
