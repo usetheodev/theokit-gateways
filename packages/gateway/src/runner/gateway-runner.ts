@@ -19,12 +19,17 @@
  * 4. Otherwise: call user handler.
  * 5. On handler throw: fire `on_error`, log via `Security.redact` (EC-F).
  *
+ * Every reply — the handler's `ctx.reply` and the EC-D auto-reply alike — fires
+ * `post_outbound` with the event, the outbound and the adapter's result, once
+ * per attempt. The hook observes the delivery; it cannot change what the caller
+ * of `reply` receives.
+ *
  * @public
  */
 
 import { Security } from "@theokit/sdk";
 
-import type { BasePlatformAdapter, SendResult } from "../adapter/base.js";
+import type { BasePlatformAdapter, OutboundMessage, SendResult } from "../adapter/base.js";
 import { HookExecutor } from "../hooks/executor.js";
 import type { GatewayHook } from "../hooks/types.js";
 import type { MessageEvent as GatewayMessageEvent, PlatformName } from "../types/message-event.js";
@@ -239,22 +244,42 @@ export class GatewayRunner {
 
   /** EC-G: per-event ctx whose reply routes to the matching adapter. */
   private buildContext(event: GatewayMessageEvent): GatewayContext {
-    const adapter = this.adaptersByPlatform.get(event.platform);
     return {
       event,
-      reply: async (text, opts) => {
-        if (adapter === undefined) {
-          return {
-            ok: false,
-            error: { code: "no_adapter", message: `no adapter for ${event.platform}` },
-          };
-        }
-        return adapter.sendMessage({
+      reply: async (text, opts) =>
+        this.deliver(event, {
           channel: event.channel,
           text,
           ...(opts?.format !== undefined ? { format: opts.format } : {}),
-        });
-      },
+        }),
     };
+  }
+
+  /**
+   * Send one outbound on behalf of `event` and report it to `post_outbound`.
+   *
+   * Every reply leaves through here so the hook fires exactly once per attempt —
+   * including the EC-D auto-reply, and including the attempt that finds no
+   * adapter for the platform. An audit hook that counted only the deliveries
+   * which reached a transport would omit precisely the ones that went nowhere.
+   *
+   * `post_outbound` observes; it does not intercept. The adapter's `SendResult`
+   * is returned to the caller unchanged, and `HookExecutor` already contains a
+   * throwing hook, so a broken observer cannot turn a delivered reply into a
+   * failed one.
+   *
+   * @internal
+   */
+  private async deliver(
+    event: GatewayMessageEvent,
+    outbound: OutboundMessage,
+  ): Promise<SendResult> {
+    const adapter = this.adaptersByPlatform.get(event.platform);
+    const result: SendResult =
+      adapter === undefined
+        ? { ok: false, error: { code: "no_adapter", message: `no adapter for ${event.platform}` } }
+        : await adapter.sendMessage(outbound);
+    await this.hookExecutor.firePostOutbound({ event, outbound, result });
+    return result;
   }
 }

@@ -4,6 +4,8 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { SendResult } from "../../src/adapter/base.js";
+import type { PostOutboundContext } from "../../src/hooks/types.js";
 import { GatewayRunner } from "../../src/runner/gateway-runner.js";
 import type { MessageEvent } from "../../src/types/message-event.js";
 import { MockAdapter } from "../adapter/mock-adapter.js";
@@ -152,6 +154,129 @@ describe("GatewayRunner (T1.3)", () => {
     expect(a.sent).toHaveLength(0);
     expect(handlerCalled).toBe(false);
     await runner.stop();
+  });
+
+  it("post_outbound fires with the event, the outbound and the adapter's result", async () => {
+    const a = new MockAdapter("telegram");
+    const seen: PostOutboundContext[] = [];
+    const runner = new GatewayRunner({
+      adapters: [a],
+      handler: async (_event, ctx) => {
+        await ctx.reply("pong", { format: "markdown" });
+      },
+      hooks: [
+        {
+          name: "audit",
+          post_outbound: (ctx) => {
+            seen.push(ctx);
+          },
+        },
+      ],
+    });
+    await runner.start();
+    await a.emit(tg("ping"));
+    // `onInbound` resolves before dispatch completes (deliberately — see start()),
+    // so the drain in stop() is the barrier that makes the assertion deterministic
+    // rather than a bet on how many microtask ticks the chain happens to take.
+    await runner.stop();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.event.text).toBe("ping");
+    expect(seen[0]?.outbound).toMatchObject({
+      channel: { id: "1", type: "dm" },
+      text: "pong",
+      format: "markdown",
+    });
+    expect(seen[0]?.result).toEqual({ ok: true, messageId: "mock-1" });
+  });
+
+  it("post_outbound fires on a failed send, so an audit hook sees the failure too", async () => {
+    const a = new MockAdapter("telegram");
+    a.failNextSend = { code: "rate_limited", message: "slow down" };
+    const seen: PostOutboundContext[] = [];
+    const runner = new GatewayRunner({
+      adapters: [a],
+      handler: async (_event, ctx) => {
+        await ctx.reply("pong");
+      },
+      hooks: [{ name: "audit", post_outbound: (ctx) => void seen.push(ctx) }],
+    });
+    await runner.start();
+    await a.emit(tg());
+    await runner.stop();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.result.ok).toBe(false);
+    expect(seen[0]?.result.error?.code).toBe("rate_limited");
+  });
+
+  it("post_outbound observes the send without altering the result the handler receives", async () => {
+    // Fire-and-forget means the hook watches the delivery; it does not intercept
+    // it. A hook that throws must not turn a delivered reply into a failed one.
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const a = new MockAdapter("telegram");
+    let replyResult: SendResult | undefined;
+    const runner = new GatewayRunner({
+      adapters: [a],
+      handler: async (_event, ctx) => {
+        replyResult = await ctx.reply("pong");
+      },
+      hooks: [
+        {
+          name: "broken-audit",
+          post_outbound: () => {
+            throw new Error("hook blew up");
+          },
+        },
+      ],
+    });
+    await runner.start();
+    await a.emit(tg());
+    await runner.stop();
+
+    expect(replyResult).toEqual({ ok: true, messageId: "mock-1" });
+    stderr.mockRestore();
+  });
+
+  it("EC-D: the auto-reply on a blocking hook also fires post_outbound", async () => {
+    const a = new MockAdapter("telegram");
+    const seen: PostOutboundContext[] = [];
+    const runner = new GatewayRunner({
+      adapters: [a],
+      handler: async () => {},
+      hooks: [
+        { name: "deny", pre_inbound: () => ({ block: true, message: "rate-limited" }) },
+        { name: "audit", post_outbound: (ctx) => void seen.push(ctx) },
+      ],
+    });
+    await runner.start();
+    await a.emit(tg());
+    await runner.stop();
+
+    expect(seen.map((c) => c.outbound.text)).toEqual(["rate-limited"]);
+  });
+
+  it("a reply with no adapter for the platform still reports the failure to post_outbound", async () => {
+    // The runner answers `no_adapter` without ever reaching a transport. An audit
+    // hook counting deliveries has to see that attempt too, or the count silently
+    // omits exactly the replies that went nowhere.
+    const tgA = new MockAdapter("telegram");
+    const seen: PostOutboundContext[] = [];
+    const runner = new GatewayRunner({
+      adapters: [tgA],
+      handler: async (_event, ctx) => {
+        await ctx.reply("pong");
+      },
+      hooks: [{ name: "audit", post_outbound: (ctx) => void seen.push(ctx) }],
+    });
+    await runner.start();
+    // Emitted through the telegram adapter but carrying a discord event: the
+    // runner routes by `event.platform`, which no registered adapter serves.
+    await tgA.emit(dc("ping"));
+    await runner.stop();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.result.error?.code).toBe("no_adapter");
   });
 
   it("EC-E: stop drains in-flight handlers before disconnect", async () => {
