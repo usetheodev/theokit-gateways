@@ -95,6 +95,13 @@ To run the webhook inbound suites, point `INTEGRATION_PUBLIC_URL` at a tunnel th
 reaches this process (`ngrok http 3000`, `cloudflared tunnel`), and register that
 URL in the provider console.
 
+`pnpm capture:line`, which captures `LINE_TEST_USER_ID` from one delivery, needs
+`cloudflared` **already installed** — `brew install cloudflared`, Cloudflare's apt
+repository, or `winget install Cloudflare.cloudflared`. It used to download the
+binary itself and run it unverified (#35); a package manager checks a signature,
+and this script runs on the machine holding every credential in `.env`. Point
+`CLOUDFLARED_PATH` at it if it lives somewhere unusual.
+
 ---
 
 ## Running with nobody watching
@@ -142,6 +149,13 @@ outbound are already verified. The gap is the cheaper side of that trade, so the
 suite skips with a comment saying it is a decision rather than an oversight.
 Revisit it with a throwaway account, never a personal one.
 
+**Enforced 2026-08-22.** Until then the decision lived only in comments, while
+`.github/workflows/integration.yml` declared `TELEGRAM_TEST_SESSION` and piped it
+into both steps. The only thing standing between that comment and an account
+credential in CI was nobody having filled the secret in — which is a habit, not a
+control. The workflow no longer references the variable, so restoring the
+capability is a deliberate three-line edit that shows up in a diff.
+
 ---
 
 ## Layout
@@ -151,18 +165,31 @@ integration/
 ├── src/
 │   ├── platforms.ts     the registry — every credential, what it is, where to get it
 │   ├── credentials.ts   .env locally, repository secrets in CI; identical names
-│   └── harness.ts       describeLive() — skips with a NAMED reason, never silently
+│   ├── harness.ts       describeLive() — skips with a NAMED reason, never silently
+│   ├── line-capture.ts  who may set LINE_TEST_USER_ID: verify HMAC, then parse
+│   ├── tunnel-binary.ts finds cloudflared; never downloads one
+│   └── env-file.ts      writes one variable into .env without reformatting it
 ├── tests/
 │   ├── readiness.test.ts   always runs; reports the gap across all ten
+│   ├── unit/               offline units for the modules above; run on every PR
 │   └── <platform>/         one directory per registry id
 └── scripts/
     ├── env-example.ts        regenerates .env.example from the registry
+    ├── capture-line-user.ts  captures LINE_TEST_USER_ID from one signed delivery
     └── discover-telegram.ts  finds a chat id the bot can see
 ```
 
 One directory per platform id, and `readiness.test.ts` fails if those two ever
 disagree — a platform in the registry with no suite, or a suite for a platform
-nobody registered.
+nobody registered. `tests/unit/` is the single named exception, listed in that
+test rather than pattern-matched.
+
+**`tests/unit/` runs on every PR, unlike everything else here.** Those modules
+decide whether a webhook delivery may write to `.env` and which binary the
+capture script executes; they touch no network, so gating them on a nightly live
+run would be leaving security logic unverified for a day at a time. They hang off
+`test:unit` — a name `pnpm -r run test` cannot reach, which is what keeps the
+no-`test`-script invariant intact.
 
 ---
 

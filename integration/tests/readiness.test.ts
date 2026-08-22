@@ -88,9 +88,21 @@ describe("live-test readiness", () => {
   it("has a test directory for every platform id, and no orphan directories", async () => {
     // Keeps the registry and the suites from drifting apart: a platform added
     // here with no suite, or a suite for a platform nobody registered.
+    //
+    // `unit/` is named here rather than pattern-matched. It holds the tests for
+    // the pure modules under `src/` — signature policy, port parsing, binary
+    // resolution, `.env` writes — which talk to no API and must run on every
+    // PR, not nightly. Naming the one exception keeps the gate closed for the
+    // case it exists to catch: an exception list of one is still a list, and a
+    // second entry has to be argued for.
+    const NON_PLATFORM_DIRS = new Set(["unit"]);
+
     const { readdir } = await import("node:fs/promises");
     const entries = await readdir(new URL(".", import.meta.url), { withFileTypes: true });
-    const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    const dirs = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .filter((name) => !NON_PLATFORM_DIRS.has(name));
     const ids = PLATFORMS.map((p) => p.id);
     for (const dir of dirs) {
       expect(ids, `tests/${dir}/ has no entry in PLATFORMS`).toContain(dir);
