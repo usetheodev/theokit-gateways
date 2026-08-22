@@ -33,6 +33,7 @@ export {
 
 // Web bridge backend (whatsapp-web.js subprocess).
 export {
+  defaultBridgeScriptPath,
   WhatsAppWebBackend,
   type WhatsAppWebBackendOptions,
 } from "./backend/web/index.js";
@@ -57,6 +58,7 @@ export type {
 export {
   mapWhatsAppCloudError,
   mapWhatsAppWebError,
+  WhatsAppBridgeError,
   WhatsAppConnectTimeoutError,
 } from "./errors.js";
 export { splitForWhatsApp } from "./split.js";

@@ -19,6 +19,28 @@ interface MetaErrorBody {
   };
 }
 
+/**
+ * The bridge reported, on its own protocol, that it cannot start.
+ *
+ * Distinct from {@link WhatsAppConnectTimeoutError}, which says only that nothing arrived in
+ * time. This one carries what the bridge said — and, when it could classify itself, a
+ * machine-readable `code` such as `peer_missing`, `peer_incompatible` or `peer_load_failed`.
+ * The difference matters to a caller: a timeout may be worth retrying, and a peer dependency
+ * that does not export what we need never will be.
+ *
+ * @public
+ */
+export class WhatsAppBridgeError extends Error {
+  override readonly name = "WhatsAppBridgeError";
+  /** Cause as named by the bridge, when it could name one. */
+  readonly code: string | undefined;
+
+  constructor(message: string, code?: string) {
+    super(`WhatsApp web bridge could not start: ${message}`);
+    this.code = code;
+  }
+}
+
 /** Custom error: `connect()` timed out waiting for "ready" (EC-6). */
 export class WhatsAppConnectTimeoutError extends Error {
   constructor(timeoutMs: number) {

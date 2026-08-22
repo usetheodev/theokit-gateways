@@ -69,12 +69,10 @@ interface BridgeRun {
 }
 
 /** Run the bridge from `cwd` for `ms`, then report how it went. */
-async function runBridge(cwd: string, ms: number, env: NodeJS.ProcessEnv = {}): Promise<BridgeRun> {
-  const child = spawn(process.execPath, [BRIDGE, "--session", "vitest-start-check"], {
-    cwd,
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, ...env },
-  });
+async function runBridge(cwd: string, ms: number, specifier?: string): Promise<BridgeRun> {
+  const argv = [BRIDGE, "--session", "vitest-start-check"];
+  if (specifier !== undefined) argv.push("--specifier", specifier);
+  const child = spawn(process.execPath, argv, { cwd, stdio: ["pipe", "pipe", "pipe"] });
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (c: Buffer) => {
@@ -84,9 +82,13 @@ async function runBridge(cwd: string, ms: number, env: NodeJS.ProcessEnv = {}): 
     stderr += c.toString("utf8");
   });
 
+  // `close` rather than `exit`: `exit` fires when the process ends, which can be BEFORE the
+  // last stdout chunks have been delivered to this process. Reading stdout at that moment
+  // can miss the very line being asserted on, and the test then fails intermittently while
+  // the bridge did exactly the right thing. `close` fires once every stdio stream is done.
   const code = await new Promise<number | null>((resolve) => {
     const timer = setTimeout(() => resolve(null), ms);
-    child.once("exit", (exitCode) => {
+    child.once("close", (exitCode) => {
       clearTimeout(timer);
       resolve(exitCode);
     });
@@ -98,13 +100,13 @@ async function runBridge(cwd: string, ms: number, env: NodeJS.ProcessEnv = {}): 
 }
 
 /** The structured events the bridge wrote to stdout, in order. */
-function eventsFrom(stdout: string): Array<{ event: string; message?: string }> {
+function eventsFrom(stdout: string): Array<{ event: string; message?: string; code?: string }> {
   return stdout
     .split("\n")
     .filter((line) => line.trim().length > 0)
     .flatMap((line) => {
       try {
-        return [JSON.parse(line) as { event: string; message?: string }];
+        return [JSON.parse(line) as { event: string; message?: string; code?: string }];
       } catch {
         return [];
       }
@@ -112,16 +114,15 @@ function eventsFrom(stdout: string): Array<{ event: string; message?: string }> 
 }
 
 describe("the web bridge script", () => {
-  it("never dies with an unhandled TypeError during startup", async () => {
+  it("never dies with an unhandled TypeError during startup", async (ctx) => {
     // The defect B-002 records. The bridge read `LocalAuth` off the module namespace, but
     // whatsapp-web.js ends its `module.exports` object with a spread, which defeats
     // cjs-module-lexer — so only some names are synthesised, and `LocalAuth` was not among
     // them. The `try/catch` around the import guards against the package being ABSENT, not
     // against a member being undefined, so the failure escaped it entirely.
-    if (!whatsAppWebInstalled()) {
-      console.warn("[bridge-starts] whatsapp-web.js not installed — nothing to start");
-      return;
-    }
+    // Skipping is not passing. A bare `return` reports green having asserted nothing, which
+    // is the "9 skipped, 1 passed reads like ten passing" problem one directory over.
+    ctx.skip(!whatsAppWebInstalled(), "whatsapp-web.js (optional peer) is not installed here");
 
     const { alive, code, stdout, stderr } = await runBridge(scratchDir(), 2_500);
 
@@ -138,6 +139,42 @@ describe("the web bridge script", () => {
     ).toBe(true);
   }, 20_000);
 
+  it("resolves the API when a name lives only on the default export", async () => {
+    // THE test for D315, and the one the first round of this suite did not have.
+    //
+    // A reviewer reverted D315 alone and the whole suite stayed green: D316, shipped in the
+    // same commit, converted the crash into a structured error that the other tests accept.
+    // The suite protected the error message and not the fix.
+    //
+    // This stub carries the REAL shape that produced B-002 — `Client` reachable on the
+    // namespace, `LocalAuth` only on the default, exactly what cjs-module-lexer leaves of
+    // whatsapp-web.js. Namespace destructuring yields `LocalAuth === undefined` and the
+    // bridge reports `peer_incompatible`; reading the default resolves both and startup
+    // proceeds to its real obstacle, the missing browser.
+    const dir = scratchDir();
+    const stub = join(dir, "real-shape.mjs");
+    writeFileSync(
+      stub,
+      [
+        "export function Client() { return { on() {}, initialize() { return Promise.reject(new Error('no browser')); } }; }",
+        "function LocalAuth() {}",
+        "export default { Client, LocalAuth };",
+        "",
+      ].join("\n"),
+    );
+
+    const { stdout } = await runBridge(dir, 2_500, stub);
+
+    const errors = eventsFrom(stdout).filter((e) => e.event === "error");
+    // If resolution regressed, the capability check fires and names a binding. Getting past
+    // it is the only thing this asserts — and the only thing that distinguishes D315 from
+    // D316.
+    expect(
+      errors.filter((e) => e.code === "peer_incompatible"),
+      `resolution regressed — the API was not read off the default export: ${JSON.stringify(errors)}`,
+    ).toEqual([]);
+  }, 20_000);
+
   it("names the missing binding when the package is present but does not expose it", async () => {
     // The negative case (rules/testing.md § 4.1): assert the SPECIFIC typed error, not that
     // it merely failed. A stub package stands in for a future version that moves the name,
@@ -150,9 +187,7 @@ describe("the web bridge script", () => {
       "export default { Client: function Client() {} };\n",
     );
 
-    const { stdout, stderr } = await runBridge(dir, 2_500, {
-      THEOKIT_WHATSAPP_WEB_SPECIFIER: stub,
-    });
+    const { stdout, stderr } = await runBridge(dir, 2_500, stub);
 
     const errors = eventsFrom(stdout).filter((e) => e.event === "error");
     expect(
@@ -160,6 +195,9 @@ describe("the web bridge script", () => {
       `expected a structured error, got stdout=${JSON.stringify(stdout)} stderr=${stderr.slice(0, 300)}`,
     ).toBeGreaterThan(0);
     expect(errors[0]?.message ?? "").toContain("LocalAuth");
+    expect(errors[0]?.code, "the error carries no machine-readable cause").toBe(
+      "peer_incompatible",
+    );
     expect(stderr).not.toContain("is not a constructor");
   }, 20_000);
 
@@ -169,19 +207,18 @@ describe("the web bridge script", () => {
     // run `pnpm add` for a package they already have.
     const dir = scratchDir();
 
-    const { stdout } = await runBridge(dir, 2_500, {
-      THEOKIT_WHATSAPP_WEB_SPECIFIER: join(dir, "does-not-exist.mjs"),
-    });
+    const { stdout } = await runBridge(dir, 2_500, join(dir, "does-not-exist.mjs"));
 
     const errors = eventsFrom(stdout).filter((e) => e.event === "error");
     expect(errors.length).toBeGreaterThan(0);
     expect(errors[0]?.message ?? "").toContain("not installed");
+    expect(errors[0]?.code).toBe("peer_missing");
   }, 20_000);
 
-  it("leaves no session directory in the package it was spawned from", async () => {
+  it("leaves no session directory in the package it was spawned from", async (ctx) => {
     // LocalAuth writes `.wwebjs_auth/` relative to cwd. Running the bridge from the package
     // would leave one behind, untracked and invisible until someone runs `git add -A`.
-    if (!whatsAppWebInstalled()) return;
+    ctx.skip(!whatsAppWebInstalled(), "whatsapp-web.js (optional peer) is not installed here");
 
     await runBridge(scratchDir(), 2_500);
 
