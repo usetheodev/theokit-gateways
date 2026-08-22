@@ -49,7 +49,7 @@ own quality gates.
 
 ## Index
 
-2 items — **Open** 1 · **In flight** 0 · **Closed** 1
+3 items — **Open** 1 · **In flight** 0 · **Closed** 2
 
 ### Open (1)
 
@@ -61,11 +61,12 @@ own quality gates.
 
 _None._
 
-### Closed (1)
+### Closed (2)
 
 | Item | Title | Status | Severity |
 |---|---|---|---|
 | [`B-002`](#b-002--the-whatsapp-webjs-bridge-cannot-start-at-all---x) | The whatsapp-web.js bridge cannot start at all | `shipped` | — |
+| [`B-003`](#b-003--the-adapters-docblock-promises-factories-that-do-not-exist---x) | The adapter's docblock promises factories that do not exist | `shipped` | — |
 
 <!-- BACKLOG-INDEX:END -->
 
@@ -104,3 +105,19 @@ dod:
 
 > Registered 2026-08-22 by `/discover --mode evolve` (sweep finding on B-001).
 
+
+## B-003 — The adapter's docblock promises factories that do not exist   [x]
+
+domain: theokit-gateways
+repo: packages/gateway-whatsapp
+suggested_mode: review
+source: human
+evidence: `packages/gateway-whatsapp/src/adapter.ts:97-100` tells consumers to call `WhatsAppAdapter.fromCloud(config)` / `fromWeb(config)`. `grep -n "static " src/adapter.ts` returns nothing. Three exported types describing that API — `WhatsAppAdapterOptions`, `WhatsAppCloudConfig`, `WhatsAppWebConfig` — have no consumer in any source file. Issue #47.
+why_now: found while looking for where to put the `allowedSenders` option, and discovering the options union is wired to nothing. The only construction guidance the package gives is wrong, and a consumer following it writes code that does not compile. `quality:doc-coverage` reads 100% because it measures presence of a docblock, not its truth.
+status: shipped
+dod:
+  - a consumer can construct the adapter by the documented path, verified by a test that uses it
+  - `WhatsAppAdapterOptions` has at least one consumer in source, or is removed
+  - no docblock in the package names a method that does not exist
+
+> Registered 2026-08-22 by `/backlog-item` (slug: `whatsapp-adapter-factories`).

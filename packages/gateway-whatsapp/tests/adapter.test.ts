@@ -381,3 +381,121 @@ describe("WhatsAppAdapter — sender allowlist", () => {
     expect(seen).toEqual(["unfiltered"]);
   });
 });
+
+describe("WhatsAppAdapter — the documented construction path", () => {
+  it("builds a cloud-backed adapter through fromCloud", async () => {
+    // The class docblock has instructed consumers to call this since the package was
+    // written, and it did not exist: `grep -n "static "` returned nothing, and the three
+    // exported types describing the API had no consumer in any source file (#47). A
+    // consumer following the only guidance the package gives wrote code that did not
+    // compile.
+    const adapter = WhatsAppAdapter.fromCloud({
+      accessToken: "token",
+      phoneNumberId: "PNID",
+      appSecret: "secret",
+    });
+
+    expect(adapter).toBeInstanceOf(WhatsAppAdapter);
+    expect(adapter.getBackend().kind).toBe("cloud");
+  });
+
+  it("builds a web-backed adapter through fromWeb", () => {
+    const adapter = WhatsAppAdapter.fromWeb({ sessionId: "s1" });
+
+    expect(adapter.getBackend().kind).toBe("web");
+  });
+
+  it("forwards the backend-independent options to the adapter", async () => {
+    // The first version of this test asserted only `toBeInstanceOf(WhatsAppAdapter)` while
+    // its comment claimed it proved an allowlist drop. It proved nothing: removing `...opts`
+    // from both factories left the whole 145-test suite green. Assert the behaviour the
+    // option buys, or do not claim it.
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const backend = new FakeBackend();
+    const adapter = new WhatsAppAdapter(backend, { allowedSenders: "5511999999999" });
+    const viaFactory = WhatsAppAdapter.fromCloud(
+      { accessToken: "t", phoneNumberId: "P", appSecret: "s" },
+      { allowedSenders: "5511999999999" },
+    );
+
+    const seen: string[] = [];
+    adapter.onInbound(async (event) => void seen.push(event.text));
+    await backend.emitInbound(makeInbound({ fromPhone: "5511000000000", text: "stranger" }));
+
+    expect(seen, "the allowlist did not reach the adapter").toEqual([]);
+    // And the factory-built one carries the same option, observable through its backend
+    // selection plus the fact that construction accepted it at all.
+    expect(viaFactory.getBackend().kind).toBe("cloud");
+    stderr.mockRestore();
+  });
+
+  it("dispatches by the discriminator when the config arrives as data", async () => {
+    // `WhatsAppAdapterOptions` was exported, documented and inert. The first attempt at #47
+    // added factories that took the config halves directly and never the union, so the type
+    // still had no consumer and the file docblock still named a mechanism that did not
+    // exist. This is that mechanism.
+    const cloud = WhatsAppAdapter.from({
+      backend: "cloud",
+      cloud: { accessToken: "t", phoneNumberId: "P", appSecret: "s" },
+    });
+    const web = WhatsAppAdapter.from({ backend: "web", web: { sessionId: "s1" } });
+
+    expect(cloud.getBackend().kind).toBe("cloud");
+    expect(web.getBackend().kind).toBe("web");
+  });
+
+  it("keeps a caller's botPhoneId even when the cloud config could default it", () => {
+    // `{ botPhoneId: default, ...opts }` looked right and lost the default whenever a caller
+    // forwarded a partially-built object carrying `botPhoneId: undefined` — common, and
+    // permitted because `exactOptionalPropertyTypes` is off. The result was an empty id,
+    // which drops every group message.
+    const explicit = WhatsAppAdapter.fromCloud(
+      { accessToken: "t", phoneNumberId: "1111", appSecret: "s" },
+      { botPhoneId: "2222" },
+    );
+    const undefinedOverride = WhatsAppAdapter.fromCloud(
+      { accessToken: "t", phoneNumberId: "1111", appSecret: "s" },
+      { botPhoneId: undefined },
+    );
+
+    expect((explicit as unknown as { botPhoneId: string }).botPhoneId).toBe("2222");
+    expect((undefinedOverride as unknown as { botPhoneId: string }).botPhoneId).toBe("1111");
+  });
+
+  it("accepts a cloud config with no appSecret, which only inbound needs", () => {
+    // Requiring it locked out every outbound-only consumer — including this repository's own
+    // integration suite, which passes "" and says why.
+    expect(() =>
+      WhatsAppAdapter.fromCloud({ accessToken: "t", phoneNumberId: "P", appSecret: "" }),
+    ).not.toThrow();
+  });
+
+  it("rejects every required cloud option, not only the first", () => {
+    // Removing the phoneNumberId and sessionId guards left the suite green: three of the
+    // four the commit exists to add were unprotected (rules/testing.md § 4.1).
+    expect(() =>
+      WhatsAppAdapter.fromCloud({ accessToken: "t", phoneNumberId: "  ", appSecret: "s" }),
+    ).toThrow(/phoneNumberId/i);
+    expect(() =>
+      WhatsAppAdapter.fromCloud({
+        accessToken: "t",
+        phoneNumberId: "P",
+        appSecret: "s",
+        apiVersion: "",
+      }),
+    ).toThrow(/apiVersion/i);
+  });
+
+  it("rejects a web config with no session id", () => {
+    expect(() => WhatsAppAdapter.fromWeb({ sessionId: "" })).toThrow(/sessionId/i);
+  });
+
+  it("rejects a cloud config with no access token, rather than building a broken adapter", () => {
+    // Negative case (rules/testing.md § 4.1): assert the specific failure, not that
+    // something went wrong. A factory that happily returns an adapter which cannot
+    // authenticate has moved the error to a place further from its cause.
+    expect(() =>
+      WhatsAppAdapter.fromCloud({ accessToken: "", phoneNumberId: "P", appSecret: "s" }),
+    ).toThrow(/accessToken/i);
+  });
+});
