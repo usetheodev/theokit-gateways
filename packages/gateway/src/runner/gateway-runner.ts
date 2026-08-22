@@ -10,7 +10,8 @@
  *   failure rolls back: connected adapters get `disconnect()`, then the
  *   aggregate error rethrows.
  * - `stop()` drains in-flight handlers up to `drainTimeoutMs` (default 10s)
- *   BEFORE disconnecting (EC-E). Idempotent.
+ *   BEFORE disconnecting (EC-E). Idempotent, and terminal: a stopped runner
+ *   cannot be restarted, and `start()` on one throws `GatewayLifecycleError`.
  *
  * **Hook chain on inbound:**
  * 1. `firePreInbound({ event })`
@@ -30,6 +31,7 @@
 import { Security } from "@theokit/sdk";
 
 import type { BasePlatformAdapter, OutboundMessage, SendResult } from "../adapter/base.js";
+import { GatewayLifecycleError } from "../errors/lifecycle-error.js";
 import { HookExecutor } from "../hooks/executor.js";
 import type { GatewayHook } from "../hooks/types.js";
 import type { MessageEvent as GatewayMessageEvent, PlatformName } from "../types/message-event.js";
@@ -97,8 +99,24 @@ export class GatewayRunner {
     this.commands.set(name, handler);
   }
 
-  /** Connect all adapters and wire inbound dispatch. */
+  /**
+   * Connect all adapters and wire inbound dispatch.
+   *
+   * @throws {GatewayLifecycleError} `runner_stopped` — the runner was already
+   * stopped. A stopped runner is spent; construct a new one.
+   */
   async start(): Promise<void> {
+    if (this.stopped) {
+      // Silently reconnecting here is what produced the unstoppable runner:
+      // `stop()` cleared `connected` but never `stopped`, so a second start()
+      // passed the guard below and rewired everything, while the next stop()
+      // returned at its own guard without disconnecting anything (#39).
+      throw new GatewayLifecycleError({
+        code: "runner_stopped",
+        message:
+          "GatewayRunner.start(): this runner has already been stopped and cannot be restarted. Construct a new GatewayRunner instead.",
+      });
+    }
     if (this.connected) return;
     const connected: BasePlatformAdapter[] = [];
     try {

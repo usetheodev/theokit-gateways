@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SendResult } from "../../src/adapter/base.js";
+import { GatewayLifecycleError } from "../../src/errors/lifecycle-error.js";
 import type { PostOutboundContext } from "../../src/hooks/types.js";
 import { GatewayRunner } from "../../src/runner/gateway-runner.js";
 import type { MessageEvent } from "../../src/types/message-event.js";
@@ -98,6 +99,52 @@ describe("GatewayRunner (T1.3)", () => {
     await runner.stop();
     await runner.stop();
     expect(a.disconnectCount).toBe(1);
+  });
+
+  it("start after stop refuses instead of resurrecting a runner nothing can stop", async () => {
+    // stop() is terminal. It used to be one-way only for stop(): `connected` was
+    // cleared, so a second start() sailed past its guard and reconnected, while
+    // `stopped` was never cleared, so the next stop() returned before doing
+    // anything. The adapter stayed connected, inbound dispatch stayed wired, and
+    // nothing could take it down again (#39).
+    const a = new MockAdapter("telegram");
+    const runner = new GatewayRunner({ adapters: [a], handler: async () => {} });
+    await runner.start();
+    await runner.stop();
+
+    await expect(runner.start()).rejects.toThrow(GatewayLifecycleError);
+    expect(a.connectCount).toBe(1);
+    expect(a.disconnectCount).toBe(1);
+    expect(a.connected).toBe(false);
+  });
+
+  it("the refusal names the state it refused, not just that it failed", async () => {
+    const a = new MockAdapter("telegram");
+    const runner = new GatewayRunner({ adapters: [a], handler: async () => {} });
+    await runner.start();
+    await runner.stop();
+
+    const err = await runner.start().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayLifecycleError);
+    expect((err as GatewayLifecycleError).code).toBe("runner_stopped");
+    expect((err as GatewayLifecycleError).message).toMatch(/stopped/i);
+  });
+
+  it("a stopped runner delivers no further inbound events", async () => {
+    const a = new MockAdapter("telegram");
+    let calls = 0;
+    const runner = new GatewayRunner({
+      adapters: [a],
+      handler: async () => {
+        calls += 1;
+      },
+    });
+    await runner.start();
+    await runner.stop();
+    await runner.start().catch(() => undefined);
+    await a.emit(tg());
+
+    expect(calls).toBe(0);
   });
 
   it("EC-G: ctx.reply routes to adapter matching event.platform", async () => {
