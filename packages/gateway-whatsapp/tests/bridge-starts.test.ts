@@ -36,7 +36,9 @@ function whatsAppWebInstalled(): boolean {
 }
 
 /** Run the bridge for `ms` and report how it went. */
-async function runBridge(ms: number): Promise<{ alive: boolean; stderr: string; code: number | null }> {
+async function runBridge(
+  ms: number,
+): Promise<{ alive: boolean; stderr: string; code: number | null }> {
   const child = spawn(process.execPath, [BRIDGE, "--session", "vitest-start-check"], {
     stdio: ["pipe", "pipe", "pipe"],
   });
