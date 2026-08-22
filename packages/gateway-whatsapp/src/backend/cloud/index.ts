@@ -17,6 +17,7 @@ import type {
   WhatsAppStatusReceipt,
 } from "../../backend-types.js";
 import { WhatsAppCloudClient } from "./client.js";
+import type { MetaTemplateComponent } from "./types.js";
 import {
   normalizeInboundMessages,
   normalizeStatusReceipts,
@@ -70,6 +71,30 @@ export class WhatsAppCloudBackend implements WhatsAppBackend {
 
   async send(message: WhatsAppOutboundMessage): Promise<WhatsAppSendResult> {
     return this.client.sendText(message.to, message.text, message.isGroup);
+  }
+
+  /**
+   * Send an approved template to `to`.
+   *
+   * Cloud-only, and deliberately absent from the `WhatsAppBackend` interface: WhatsApp Web has no
+   * concept of templates, so putting this on the shared contract would hand the web backend a
+   * method it could only throw from. A consumer reaches it by holding the backend directly.
+   *
+   * This is the only way to message someone outside the 24-hour service window — every
+   * notification, and every unattended check that this integration still works. Free-form text to
+   * a cold recipient comes back as `session_window_expired`.
+   *
+   * @param templateName Name of a template already approved on the WhatsApp Business account.
+   * @param languageCode Locale of the approved template, e.g. `en_US`, `pt_BR`.
+   * @param components Values for the template's variables; omit for a template that takes none.
+   */
+  async sendTemplate(
+    to: string,
+    templateName: string,
+    languageCode: string,
+    components?: ReadonlyArray<MetaTemplateComponent>,
+  ): Promise<WhatsAppSendResult> {
+    return this.client.sendTemplate(to, templateName, languageCode, components);
   }
 
   onInbound(handler: (event: WhatsAppInboundEvent) => Promise<void>): () => void {
