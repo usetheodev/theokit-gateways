@@ -7,7 +7,7 @@
  * @internal
  */
 
-import { GatewayConfigurationError } from "@theokit/gateway";
+import { GatewayConfigurationError, type GatewayConfigurationErrorOptions } from "@theokit/gateway";
 
 import type { WhatsAppSendResult } from "./backend-types.js";
 
@@ -21,12 +21,15 @@ interface MetaErrorBody {
   };
 }
 
-/** Public input shape for the {@link ConfigurationError} constructor. */
-export interface ConfigurationErrorOptions {
-  readonly code: string;
-  readonly message?: string;
-  readonly detail?: string;
-}
+/**
+ * Public input shape for the {@link ConfigurationError} constructor.
+ *
+ * Aliased from the core rather than redeclared. The base type exists precisely so every
+ * adapter stops writing its own copy of the same three fields, and a redeclaration means a
+ * field added to the core silently never reaches this package. Four siblings alias it the
+ * same way.
+ */
+export type ConfigurationErrorOptions = GatewayConfigurationErrorOptions;
 
 /**
  * A required option is missing or empty.

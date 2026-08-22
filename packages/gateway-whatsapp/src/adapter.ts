@@ -70,7 +70,14 @@ export type WhatsAppAdapterOptions =
 export interface WhatsAppAdapterCommonOptions {
   /** D309: require an @mention in groups. Default `true`. */
   readonly requireMention?: boolean;
-  /** Phone id to detect mentions of (digits only). Defaults to the cloud phone number id. */
+  /**
+   * Phone id to detect mentions of (digits only).
+   *
+   * `fromCloud` defaults it to the phone number id. **The web backend has nothing to default
+   * from**, so leaving it unset there while `requireMention` is on (its default) drops every
+   * group message — the adapter cannot tell whether it was mentioned. That drop is now
+   * logged rather than silent.
+   */
   readonly botPhoneId?: string;
   /**
    * Comma-separated senders allowed to reach the handler. Absent leaves delivery unchanged;
@@ -149,6 +156,31 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   private statusUnsubscribe?: () => void;
 
   /**
+   * Build an adapter from a discriminated configuration.
+   *
+   * The entry point for configuration that arrives as **data** — read from a file, an
+   * environment, or a tenant record — where the backend is a string rather than a decision
+   * made in code. `fromCloud` / `fromWeb` are the direct forms when the choice is already
+   * known at the call site.
+   *
+   * This is what `WhatsAppAdapterOptions` exists for. Until it had this consumer the union
+   * was exported, documented and inert, which is the defect #47 was filed about, and the
+   * first attempt at closing that issue left it inert — the factories took the config halves
+   * directly and never the union.
+   *
+   * @throws {ConfigurationError} when a required option is missing or empty.
+   * @public
+   */
+  static from(
+    options: WhatsAppAdapterOptions,
+    common: WhatsAppAdapterCommonOptions = {},
+  ): WhatsAppAdapter {
+    return options.backend === "cloud"
+      ? WhatsAppAdapter.fromCloud(options.cloud, common)
+      : WhatsAppAdapter.fromWeb(options.web, common);
+  }
+
+  /**
    * Build a Cloud-API adapter.
    *
    * The construction path this package's docblock has named since it was written, and which
@@ -165,11 +197,19 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
     cloud: WhatsAppCloudConfig,
     opts: WhatsAppAdapterCommonOptions = {},
   ): WhatsAppAdapter {
+    // `appSecret` is deliberately NOT required: it verifies inbound webhook signatures
+    // (`backend/cloud/index.ts`) and outbound never reads it. This repository's own
+    // integration suite passes `""` for exactly that reason, so requiring it would have
+    // locked an outbound-only consumer out of the path this factory exists to offer.
     requireNonEmpty([
       ["accessToken", cloud.accessToken],
       ["phoneNumberId", cloud.phoneNumberId],
-      ["appSecret", cloud.appSecret],
     ]);
+    // INFO-10: an empty apiVersion yields `https://graph.facebook.com//<id>`, because the
+    // client's `?? "v18.0"` does not catch `""`. Absent is fine; blank is a mistake.
+    if (cloud.apiVersion !== undefined) {
+      requireNonEmpty([["apiVersion", cloud.apiVersion]]);
+    }
     return new WhatsAppAdapter(
       new WhatsAppCloudBackend({
         accessToken: cloud.accessToken,
@@ -177,7 +217,7 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
         appSecret: cloud.appSecret,
         ...(cloud.apiVersion !== undefined ? { apiVersion: cloud.apiVersion } : {}),
       }),
-      { botPhoneId: cloud.phoneNumberId, ...opts },
+      { ...opts, botPhoneId: opts.botPhoneId ?? cloud.phoneNumberId },
     );
   }
 
@@ -291,7 +331,17 @@ export class WhatsAppAdapter extends BasePlatformAdapter {
   /** D309 + EC-7: group filter with digit-only normalization. */
   private shouldDropGroupMessage(inbound: WhatsAppInboundEvent): boolean {
     if (inbound.conversationType !== "group" || !this.requireMention) return false;
-    if (this.botPhoneId.length === 0) return true; // misconfigured — drop silently
+    if (this.botPhoneId.length === 0) {
+      // Misconfigured: with no id to look for, every group message looks unaddressed. Saying
+      // so matters more here than anywhere — the sibling allowlist check makes the same point
+      // fifteen lines below, and a gateway that answers no group message and explains nothing
+      // is indistinguishable from a broken one. Common with `fromWeb`, which has no phone
+      // number id to default from.
+      process.stderr.write(
+        "[whatsapp] dropping every group message: requireMention is on and botPhoneId is unset\n",
+      );
+      return true;
+    }
     return !phoneRuns(inbound.text).some((run) => run.includes(this.botPhoneId));
   }
 
