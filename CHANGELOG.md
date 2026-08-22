@@ -11,6 +11,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `BACKLOG.md` — the maintenance registry this repository governs itself with, plus the routing
+  table and domain specialist that make an item resolvable. The routing table shipped as the `theo`
+  ecosystem's eight domains, none of which name anything here, so every item filed would have been
+  refused as unroutable; it is now derived from this project. `integration` and `tools` were added
+  by hand — `pnpm-workspace.yaml` declares them but the detector globs `packages/*` and does not
+  reach them. First item: **packages/gateway-whatsapp:** backlog B-001 — measure what the
+  whatsapp-web.js backend costs, and give it a rival
+
+- A fail-closed sender allowlist for WhatsApp (`allowedSenders`). The package had no sender filter:
+  `shouldDropGroupMessage` fires only for groups with `requireMention`, so any stranger's direct
+  message reached the handler, and from there whatever agent is behind it. Absent and empty are
+  deliberately different — no allowlist leaves delivery unchanged, an empty one admits nobody — so
+  adopting the filter never mutes an existing deployment by surprise. Refusals are logged, because a
+  silent drop is indistinguishable from a broken gateway (#47 records a separate documentation
+  defect found on the way)
+
+- WhatsApp can now be validated without arranging anything by hand. Its live suite had never been
+  executed, and could not have answered whether the integration worked: the adapter could only send
+  free-form text, which Meta refuses more than 24 hours after the recipient last replied, so the
+  outbound test asserted success while its own comment admitted the send might be refused on policy.
+  `WhatsAppCloudBackend.sendTemplate()` carries no such condition, and `hello_world` is pre-approved
+  on every WhatsApp Business account. The text test now asserts the pair it can honestly assert —
+  delivered, or refused for that one documented reason and reported as `session_window_expired`
+  (#46)
+
 - The live suite now proves the core's capabilities instead of one of them. It drove exactly one of
   `@theokit/gateway`'s ten runtime exports — `GatewayRunner` — and nothing anywhere said so; the
   six defects fixed in this same cycle all sat in code no live test touched, two of them fatal to
@@ -48,6 +73,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/code-quality` now audits something. `code-quality-languages.txt` shipped empty, and an empty
+  file means no language is checked — so the gate returned `PASS` with `languages_audited: []`, a
+  green that verified nothing. TypeScript is enabled against the root manifest, and the gate now
+  reports D1–D4 clean across the workspace and D5 skipped with its reason (no dependency-cruiser
+  config), which is the honest shape of a partial audit
+
+- Two peer gateways were cloned into the read-only study zone to inform the WhatsApp work:
+  `openclaw/openclaw` (Apache-2.0) and `NousResearch/hermes-agent`. What was learned is recorded as
+  a finding with citations, not as code — both remain third-party material and nothing was copied
+  from either. The one thing that changed our code came from measuring our own: the Cloud API error
+  mapper matched none of Meta's real codes (#46)
+
 - The live integration suite no longer receives the npm publish credential. `Release` called it
   with `secrets: inherit`, which passes every secret the caller holds; the 42 platform secrets are
   now declared and passed one by one (#33)
@@ -57,6 +94,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Node pinned to 22.12.0 and pnpm to 10.34.1, resolved from `.nvmrc` and `packageManager` (#33)
 
 ### Fixed
+
+- The WhatsApp `web` backend now starts. Its bridge took `LocalAuth` off the module namespace
+  of `whatsapp-web.js`, which exports that name only on the default, so it is `undefined` and the
+  process dies 1011 ms in with `TypeError: LocalAuth is not a constructor`. Nothing caught it
+  because nothing ever executed the script: every test injects a fake child process, and the live
+  suite excludes the backend by declaration — 132 green tests over a backend that cannot start. A
+  second, independent blocker sits behind it: `puppeteer` is absent from
+  `pnpm.onlyBuiltDependencies`, so no browser is ever downloaded. Fixed (B-002), and the fix
+  uncovered two more defects behind it: the bridge could not be **found** from the published
+  package — the path walk was written for the source tree and landed one directory above the
+  package in the flat bundle — and every failure surfaced as a 120-second timeout, because
+  `connect()` raced only the ready promise and wrote the bridge's own diagnosis to stderr before
+  dropping it. All three are closed, each with a test that goes red when that fix alone is
+  reverted. The browser gap remains and is now reported with Chrome's install command rather than
+  crashed on
 
 - A hardening sweep over the runner and all ten adapters closed six defects, each measured against
   the running code before it was filed and re-measured after the fix. Two were fatal to the process:

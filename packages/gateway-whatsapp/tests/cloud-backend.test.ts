@@ -229,3 +229,38 @@ describe("WhatsAppCloudBackend — a throwing handler", () => {
     stderr.mockRestore();
   });
 });
+
+describe("WhatsAppCloudBackend — sendTemplate", () => {
+  it("reaches a recipient who never wrote first, which text cannot", async () => {
+    // Pillar (a) of the wiring triad: sendTemplate on the client is unreachable
+    // unless something a consumer can hold delegates to it. The backend is that
+    // thing — WhatsAppCloudClient is @internal and not exported.
+    const fakeFetch = makeFetchOk();
+    const b = makeBackend(fakeFetch);
+
+    const result = await b.sendTemplate("5511", "hello_world", "en_US");
+
+    expect(result.ok).toBe(true);
+    const init = (fakeFetch as ReturnType<typeof vi.fn>).mock.calls[0]![1] as RequestInit;
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body.type).toBe("template");
+    expect(body.template).toEqual({ name: "hello_world", language: { code: "en_US" } });
+  });
+
+  it("surfaces a template rejection as a structured error, never a throw", async () => {
+    const b = makeBackend(
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: 132001, message: "no such template" } }), {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          }),
+      ) as typeof fetch,
+    );
+
+    const result = await b.sendTemplate("5511", "nope", "en_US");
+
+    expect(result.ok).toBe(false);
+    expect(result.error?.message).toContain("no such template");
+  });
+});

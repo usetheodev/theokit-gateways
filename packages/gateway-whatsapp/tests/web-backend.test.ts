@@ -6,10 +6,14 @@
  */
 
 import { EventEmitter } from "node:events";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
-
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
-import { WhatsAppWebBackend } from "../src/backend/web/index.js";
+
+import { defaultBridgeScriptPath, WhatsAppWebBackend } from "../src/backend/web/index.js";
 import type { BridgeHandle } from "../src/backend/web/lifecycle.js";
 import { WhatsAppConnectTimeoutError } from "../src/errors.js";
 
@@ -283,4 +287,105 @@ describe("WhatsAppWebBackend — a throwing handler", () => {
     await backend.disconnect();
     stderr.mockRestore();
   });
+});
+
+describe("WhatsAppWebBackend — spawning the real bridge", () => {
+  /** A minimal bridge that reports a failure the way the real one does, and exits. */
+  function fakeBridge(dir: string): string {
+    const script = join(dir, "fake-bridge.mjs");
+    writeFileSync(
+      script,
+      [
+        'process.stdout.write(JSON.stringify({ event: "error", message: "stub could not start", code: "peer_missing" }) + "\\n");',
+        "setTimeout(() => process.exit(1), 20);",
+        "",
+      ].join("\n"),
+    );
+    return script;
+  }
+
+  it("fails connect() with the reported cause instead of waiting out the timeout", async () => {
+    // The wiring the fix claimed and did not have. `connect()` raced only the `ready`
+    // promise, and a bridge that said exactly what was wrong had its message written to
+    // stderr and dropped — so the caller still paid the full connectTimeoutMs and got a
+    // timeout, the one error that carries no cause.
+    const dir = mkdtempSync(join(tmpdir(), "wa-spawn-"));
+    try {
+      const backend = new WhatsAppWebBackend({
+        sessionId: `spawn-${process.pid}`,
+        bridgeScriptPath: fakeBridge(dir),
+        connectTimeoutMs: 30_000,
+        theokitHome: dir,
+      });
+      const startedAt = Date.now();
+
+      await expect(backend.connect()).rejects.toMatchObject({
+        name: "WhatsAppBridgeError",
+        code: "peer_missing",
+      });
+
+      // The point is the speed: a timeout would have taken 30s.
+      expect(Date.now() - startedAt).toBeLessThan(10_000);
+      await backend.disconnect();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 45_000);
+
+  it("resolves a bridge script that exists, in whichever layout it runs from", () => {
+    expect(existsSync(defaultBridgeScriptPath())).toBe(true);
+  });
+
+  it("resolves the bridge from the BUILT package, which is what consumers get", async (ctx) => {
+    // The test above cannot catch the defect it describes. It runs against `src/`, where the
+    // old `../../bridge/` walk was correct — `src/backend/web/` up two is `src/`. The bundle
+    // is one flat file at `dist/index.js`, so the same walk landed on `packages/bridge/`,
+    // one directory above the package, and the child died with MODULE_NOT_FOUND while
+    // connect() reported a 120-second timeout.
+    //
+    // Only the built artifact exercises that path, so this asserts against it and skips
+    // loudly when the package has not been built rather than passing on absence.
+    const dist = join(import.meta.dirname, "..", "dist", "index.js");
+    ctx.skip(!existsSync(dist), "package not built — run `pnpm build` to cover the bundled layout");
+
+    const built = (await import(pathToFileURL(dist).href)) as {
+      defaultBridgeScriptPath: () => string;
+    };
+
+    expect(existsSync(built.defaultBridgeScriptPath())).toBe(true);
+  });
+});
+
+describe("WhatsAppWebBackend — connect() bookkeeping", () => {
+  it("does not accumulate callbacks across failed connects", async () => {
+    // Found by an independent verifier of the review fixes, not by the review itself. Both
+    // arrays hold settled callbacks once the race is decided, and neither was cleared on the
+    // timeout path: handleBridgeError never runs, and disconnect() returns early while
+    // `connected` is false. A reconnect loop grew them by one per attempt, forever.
+    const dir = mkdtempSync(join(tmpdir(), "wa-leak-"));
+    try {
+      // A bridge that says nothing, so every attempt fails by timeout — the leaking path.
+      const silent = join(dir, "silent-bridge.mjs");
+      writeFileSync(silent, "setTimeout(() => process.exit(0), 5_000);\n");
+      const backend = new WhatsAppWebBackend({
+        sessionId: `leak-${process.pid}`,
+        bridgeScriptPath: silent,
+        connectTimeoutMs: 120,
+        theokitHome: dir,
+      });
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await expect(backend.connect()).rejects.toBeInstanceOf(WhatsAppConnectTimeoutError);
+      }
+
+      const internals = backend as unknown as {
+        readyResolvers: unknown[];
+        connectRejectors: unknown[];
+      };
+      expect(internals.readyResolvers).toEqual([]);
+      expect(internals.connectRejectors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 45_000);
 });
