@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A fail-closed sender allowlist for WhatsApp (`allowedSenders`). The package had no sender filter:
+  `shouldDropGroupMessage` fires only for groups with `requireMention`, so any stranger's direct
+  message reached the handler, and from there whatever agent is behind it. Absent and empty are
+  deliberately different — no allowlist leaves delivery unchanged, an empty one admits nobody — so
+  adopting the filter never mutes an existing deployment by surprise. Refusals are logged, because a
+  silent drop is indistinguishable from a broken gateway (#47 records a separate documentation
+  defect found on the way)
+
 - WhatsApp can now be validated without arranging anything by hand. Its live suite had never been
   executed, and could not have answered whether the integration worked: the adapter could only send
   free-form text, which Meta refuses more than 24 hours after the recipient last replied, so the
