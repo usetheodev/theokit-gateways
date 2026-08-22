@@ -119,14 +119,21 @@ export class WhatsAppWebBackend implements WhatsAppBackend {
 
     try {
       const phone = await Promise.race([ready, timeout]);
-      if (timer !== undefined) clearTimeout(timer);
       this.botPhone = phone;
       this.connected = true;
       return true;
     } catch (err) {
-      if (timer !== undefined) clearTimeout(timer);
       await this.cleanupHandle();
       throw err;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      // Both arrays hold settled callbacks once the race is decided, and neither was cleared
+      // on the path that fails by timeout — `handleBridgeError` never ran, and `disconnect()`
+      // returns early while `connected` is false. A reconnect loop therefore grew them by one
+      // per attempt forever. `readyResolvers` had the same leak before this method learned to
+      // reject; clearing them together is the whole fix.
+      this.readyResolvers = [];
+      this.connectRejectors = [];
     }
   }
 

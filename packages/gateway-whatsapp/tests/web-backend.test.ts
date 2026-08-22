@@ -355,3 +355,37 @@ describe("WhatsAppWebBackend — spawning the real bridge", () => {
     expect(existsSync(built.defaultBridgeScriptPath())).toBe(true);
   });
 });
+
+describe("WhatsAppWebBackend — connect() bookkeeping", () => {
+  it("does not accumulate callbacks across failed connects", async () => {
+    // Found by an independent verifier of the review fixes, not by the review itself. Both
+    // arrays hold settled callbacks once the race is decided, and neither was cleared on the
+    // timeout path: handleBridgeError never runs, and disconnect() returns early while
+    // `connected` is false. A reconnect loop grew them by one per attempt, forever.
+    const dir = mkdtempSync(join(tmpdir(), "wa-leak-"));
+    try {
+      // A bridge that says nothing, so every attempt fails by timeout — the leaking path.
+      const silent = join(dir, "silent-bridge.mjs");
+      writeFileSync(silent, "setTimeout(() => process.exit(0), 5_000);\n");
+      const backend = new WhatsAppWebBackend({
+        sessionId: `leak-${process.pid}`,
+        bridgeScriptPath: silent,
+        connectTimeoutMs: 120,
+        theokitHome: dir,
+      });
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await expect(backend.connect()).rejects.toBeInstanceOf(WhatsAppConnectTimeoutError);
+      }
+
+      const internals = backend as unknown as {
+        readyResolvers: unknown[];
+        connectRejectors: unknown[];
+      };
+      expect(internals.readyResolvers).toEqual([]);
+      expect(internals.connectRejectors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 45_000);
+});
